@@ -27,6 +27,11 @@ type Section struct {
 // should scan: requirements and nice_to_have only, per §6 — responsibilities
 // and boilerplate are kept for evidence/debugging but not scanned for
 // skills.
+//
+// This can legitimately return empty for a posting whose headings don't
+// match classifyHeading's cue lists (see the KNOWN GAP comment there) —
+// accepted for now, not a bug. Callers ranking skills should expect some
+// postings to contribute zero, not treat it as an extraction failure.
 func RequirementSections(sections []Section) []Section {
 	var out []Section
 	for _, s := range sections {

@@ -64,6 +64,20 @@ func matchesAny(heading string, cues []string) bool {
 // both default to boilerplate — conservative on purpose, since unlabeled
 // marketing/DEI copy is the extraction pipeline's biggest noise source
 // (§6).
+//
+// KNOWN GAP (accepted, not fixed): this only works for postings that use
+// conventional section headings. A real Kabam (Lever) posting used "In
+// this role, you can expect to:" and "To be successful in this role, your
+// background includes:" — neither matches any cue, so both sections
+// default to boilerplate and that posting contributes zero extracted
+// skills, despite having real content (Jira, Google Workspace, etc.) in
+// the second section. Decision: accept this for now rather than chase
+// arbitrary phrasing (see NEXT_STEPS.md). Two paths considered for later:
+// (a) a fallback that treats a posting's last substantive non-boilerplate
+// section as a lower-confidence requirements candidate when zero sections
+// classify normally, or (b) the Stage 5 review queue surfacing terms from
+// misclassified sections once Bedrock fallback exists, independent of
+// which section they came from.
 func classifyHeading(heading string) SectionKind {
 	h := strings.ToLower(strings.TrimSpace(heading))
 	if h == "" {
