@@ -60,7 +60,7 @@ func (c *LeverConnector) Fetch(ctx context.Context, cfg CompanyConfig) ([]RawPos
 			"elapsed", time.Since(start).String(), "error", err.Error())
 		return nil, fmt.Errorf("lever: fetch %s: %w", cfg.Slug, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		slog.Error("lever: non-200 response", "company", cfg.Slug, "url", url,

@@ -10,15 +10,20 @@ This covers what actually works today (`9c0dd83`). It'll grow as more of
 
 - Go 1.23+ (`go version`)
 - Docker Desktop running (`docker info` should succeed, not hang)
+- golangci-lint v2.x (`golangci-lint --version`) — only needed for `make lint`
 - GNU Make (`make --version`)
 
-## 1. Build, vet, unit tests
+## 1. Build, lint, unit tests
 
 ```
 make build   # go build ./...
-make lint    # go vet ./... + gofmt -l . (golangci-lint not set up yet)
+make lint    # golangci-lint run ./... (config: .golangci.yml, standard set + unconvert/unparam)
 make test    # go test ./...
 ```
+
+`make lint` needs `golangci-lint` on PATH (v2.x — the config schema
+changed between v1 and v2, so an older install won't read `.golangci.yml`
+correctly).
 
 `make test` currently only exercises `internal/extract` (heading
 classification + full segmentation, both the HTML and Lever-`lists`

@@ -28,8 +28,9 @@ skill-frequency table from real postings across ≥5 companies.
 - `Makefile` (build/test/lint/fmt/up/down/ingest/report), `docker-compose.yml`
   (DynamoDB Local), `Dockerfile` (multi-stage, `--build-arg BINARY` selects
   which `cmd/` binary — not wired to any deploy path), `.editorconfig`.
-- `lint` currently runs `go vet` + `gofmt -l` as a stand-in for
-  golangci-lint, which isn't installed this session.
+- `lint` runs `golangci-lint run ./...` (config: `.golangci.yml`, standard
+  linter set + `unconvert`/`unparam`). Caught 2 real findings on first run
+  (unchecked `resp.Body.Close()` errors in both connectors) — fixed.
 
 **Data model & store** (`internal/model`, `internal/store`)
 - Single-table item shapes from §4: `Posting`, `PostingSkill`, `Skill`.

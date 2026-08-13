@@ -53,7 +53,7 @@ func (c *GreenhouseConnector) Fetch(ctx context.Context, cfg CompanyConfig) ([]R
 			"elapsed", time.Since(start).String(), "error", err.Error())
 		return nil, fmt.Errorf("greenhouse: fetch %s: %w", cfg.Slug, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		slog.Error("greenhouse: non-200 response", "company", cfg.Slug, "url", url,

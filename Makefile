@@ -6,14 +6,8 @@ build:
 test:
 	go test ./...
 
-# go vet + gofmt -l stand in for golangci-lint for now (not installed this
-# session); swap in golangci-lint once it's added, per docs/phase-0.md.
 lint:
-	go vet ./...
-	@unformatted="$$(gofmt -l .)"; \
-	if [ -n "$$unformatted" ]; then \
-		echo "gofmt needed on:"; echo "$$unformatted"; exit 1; \
-	fi
+	golangci-lint run ./...
 
 fmt:
 	gofmt -w .
