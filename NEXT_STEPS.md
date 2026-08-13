@@ -1,62 +1,77 @@
 # Next steps
 
-**Single next phase: Phase 0 — Scaffold**  
-Do not start Phase 1 (connectors, extraction, DynamoDB Local, `make ingest && make report`) until this phase’s Definition of Done passes.
+**Current DoD** (`docs/design.md` §17, operator-confirmed scope for this
+session): `make ingest && make report` prints a ranked skill-frequency
+table from real postings across ≥5 companies. Ingest side is done and
+verified (see PROGRESS.md). Report is still the interim posting-count
+version — the ranked table needs Stage 3.
 
----
+## Open decision: heading-keyword classification doesn't generalize
 
-## Definition of Done
+Segmentation (Stage 2) classifies sections by matching their heading text
+against fixed keyword lists (`docs/design.md` §6: "requirements",
+"qualifications", "nice to have", "bonus", etc.). This works well for
+Greenhouse postings tested so far (Epic Games, Riot Games) but **fails
+completely** on at least one real Lever posting: Kabam's "Associate Live
+Operations Specialist" uses `"In this role, you can expect to:"` and `"To
+be successful in this role, your background includes:"` as its section
+headings — neither matches any cue, so both sections default to
+`boilerplate` and this posting would contribute **zero** extracted skills
+to Stage 3, despite having real content (Jira, Google Workspace, etc.) in
+the second section.
 
-`docs/design.md` does not contain §13 (the phased plan its own §0 names). The Phase 0 DoD is therefore missing from the source of truth. The only verbatim phase DoD is in untracked `job-syllabus-design.md` §13. **Copied verbatim from that file, not from `docs/design.md`:**
+This isn't a one-off typo to patch (like the "desired qualifications" fix
+already made) — it's evidence that pure heading-keyword matching won't
+generalize across the ~40 companies §15 asks for, especially indie/midsize
+studios that don't use standard HR-template language. Options, roughly in
+order of effort:
 
-> **DoD:** `make test` and `make lint` pass on an empty test suite.
+1. **Accept it as a known gap for now.** Postings with non-standard
+   headings just contribute fewer skills; the review queue (§6 Stage 5,
+   not built yet) is the long-term fix once Bedrock fallback exists —
+   novel terms surface there regardless of which section they came from.
+2. **Add a fallback heuristic**: if a posting has zero requirements/
+   nice_to_have sections after heading classification, treat the last
+   substantive non-boilerplate section (or any section with enough bullet
+   lines) as a lower-confidence requirements candidate.
+3. **Widen the cue lists opportunistically** as more real postings get
+   tested — same pattern as the "desired qualifications" fix, but this is
+   whack-a-mole against arbitrary phrasing and won't fully close the gap.
 
-Closest Phase 0 *scope* text that **is** in `docs/design.md` (§17), copied verbatim:
+Needs an operator decision before Stage 3 locks in what "requirements
+content" means. Not resolved as of `9c0dd83`.
 
-> Start with the repo scaffold (cmd/{api,ingest,scraper,worker,rollup}, internal/{api,auth,connectors,extract,model,store,queue,export,safefetch,config}, data/, testdata/labeled/, docs/, Dockerfile, docker-compose.yml, Makefile)
+## Ordered task list to close the DoD gap
 
-Also from `docs/design.md` §0.6 (applies to every phase, including this one):
+1. **Resolve the heading-classification decision above.**
+2. **`data/skills.yaml`** — canonical skills + aliases covering the
+   categories in §6's taxonomy table. Needs its own quick schema check
+   before writing (same pattern as the two prior checkpoints) since it's
+   the last piece before Stage 3 can run.
+3. **Stage 3 (dictionary matching)** in `internal/extract`: word-boundary/
+   regex matching of `skills.yaml` aliases against `RequirementSections`
+   output, producing `PostingSkill` edges with `Required`/`Confidence`/
+   `Method="dict"`.
+4. **Wire Stage 1-3 into `cmd/ingest`**: run extraction on newly-ingested
+   (or `ExtractVer < current`) postings, write `PostingSkill` edges via
+   `TransactWriteItems` with the idempotent counter-increment pattern from
+   §4 ("The aggregation problem").
+5. **Rewrite `report`** to produce the actual ranked skill-frequency table
+   (skill, count, % of postings, required vs. nice-to-have split) instead
+   of the interim posting-count view.
+6. **Validate the DoD**: `make ingest && make report` end to end against
+   the 5 seed companies (or more — §5 budgets a couple hours to find more
+   real Greenhouse/Lever/Ashby tokens if 5 turns out too thin for a
+   meaningful ranking).
+7. **`docs/phase-0.md` + `docs/phase-1.md` writeups** (§0.6 — required, not
+   optional). Should cover: the design-doc source-of-truth conflict and
+   how it was resolved, the DynamoDB Local hang postmortem, the two
+   extraction bugs only found via live-data testing, and this heading-
+   classification open question.
 
-> **Every phase ends with a `docs/phase-N.md` writeup** — what was built, what broke, what you'd do differently. These become the portfolio blog posts, and they are not optional.
+## Explicitly still out of scope
 
-`docs/design.md` §17’s combined DoD (`make ingest && make report` … 5 companies) is **Phase 1**. Do not use it as the Phase 0 exit criterion.
-
----
-
-## Open questions
-
-`docs/design.md` has **no §16**. The open-question list lives only in `job-syllabus-design.md` §16.
-
-**None of those five questions block Phase 0** (role-family classification, salary extraction, historical trends, guest read access, v2 ideas). Do not invent answers while scaffolding.
-
-**Blocks this phase (documentation, not §16):** `docs/design.md` is truncated. Phase 0 can still be executed from §17’s scaffold list + the DoD above. **Do not restore or merge `job-syllabus-design.md` into `docs/design.md` as a silent side effect of Phase 0 unless the operator explicitly asks** — the SoT rule is that `docs/design.md` wins, and filling §10–§16 is a spec decision, not a code task. Flag it: later phases have **no DoD in the SoT file**. Fix that before Phase 1+ is treated as specified.
-
----
-
-## Shaky prerequisites
-
-There is no earlier DONE phase. Two things will make Phase 0’s own DoD lie if ignored:
-
-1. **Go 1.23+ and `make` are not installed on this machine** (verified 2026-08-13). Docker is. `make test` / `make lint` cannot pass until the toolchain exists. The SoT specifies `make`, not a PowerShell substitute.
-2. **`README.md` already claims Phase 0/1 is in progress.** That is false. Do not extend README’s connector/extraction story during Phase 0. A one-line “Phase 0 scaffold” status is enough when the writeup lands; do not advertise DynamoDB Local until it exists.
-
-Empty `cmd/` and `internal/` directories are not a foundation — they are untracked name stubs. Re-creating packages on top of them is fine; do not assume they imply a module.
-
----
-
-## Ordered task list (close the gap to DoD)
-
-1. **Install toolchain:** Go 1.23+ on PATH; `make` (e.g. via Git for Windows / chocolatey `make`); `golangci-lint`. Confirm `go version` reports 1.23 or newer.
-2. **`go mod init`** at repo root for a single module (five binaries, shared `internal/` — `docs/design.md` §3). Do not add dependencies yet. Approved list is supposed to be §14; that section is missing from the SoT. Phase 0 empty suite should not need `aws-sdk-go-v2` / `chi` / `goquery`.
-3. **Makefile** with at least `test` → `go test ./...` and `lint` → `golangci-lint run`. No `ingest` / `report` targets required to *pass* Phase 0; adding empty stubs that fail is worse than omitting them until Phase 1.
-4. **golangci-lint config** at repo root so `make lint` is deterministic.
-5. **`.editorconfig`.**
-6. **`docker-compose.yml`** with DynamoDB Local and LocalStack, as named in `job-syllabus-design.md` §13 / `docs/design.md` §17. Compose file on disk is Phase 0; **do not** implement store code or run ingest against it yet.
-7. **`Dockerfile`** multi-stage, one build-arg selecting the binary (`docs/design.md` §17; detail in `job-syllabus-design.md` §14). Can be a compile-only stub; do not push images (Jenkins is Phase 2; §0.4).
-8. **Minimal Go packages so `go test ./...` has a module to test:** stub `cmd/{api,ingest,scraper,worker,rollup}/main.go` and empty `internal/*` packages if needed. **No connector implementations, no extraction pipeline, no DynamoDB access, no HTTP API, no Terraform, no Jenkins, no Cognito, no Expo.** `docs/design.md` §17: show the `Connector` interface and `companies.yaml` schema *before* writing connector code — that review is the start of Phase 1, not Phase 0.
-9. **Keep `data/` and `testdata/labeled/` in git** (`.gitkeep` or equivalent). Do not add `companies.yaml` / `skills.yaml` / labeled JSON until Phase 1 — those are the vertical slice, not the empty suite.
-10. **Run `make test` and `make lint` and keep both green** on that empty suite. That is the DoD.
-11. **`docs/phase-0.md` writeup** (what was built, what broke, what you’d do differently). Required by §0.6.
-12. **Correct `README.md`** so it does not claim Phase 1 work exists. Point at `docs/design.md` and the new phase-0 writeup.
-
-Stop. Do not research ATS tokens, do not hand-label postings, do not write `internal/connectors` or `internal/extract` beyond empty packages.
+Terraform, Jenkins/JCasC, Cognito/auth, Expo/mobile client, Bedrock
+fallback (§6 Stage 4), review queue (§6 Stage 5), hand-labeled precision
+gate (§6 "Validation" — 50 postings, 90% precision threshold). All per
+`docs/design.md` §17 and the operator's explicit session scope.
