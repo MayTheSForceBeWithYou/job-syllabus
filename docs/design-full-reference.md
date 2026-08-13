@@ -1,3 +1,12 @@
+> **Reference copy — not the source of truth.** `docs/design.md` is the source of truth for
+> this project (see its own §0). This file is the operator's original, uncompressed design
+> doc, kept for reference because it has fuller Terraform/Jenkins/cost/phase-list detail in
+> §9–§16. Its section numbers do not match `docs/design.md` (§9–16 were deliberately
+> summarized down to one paragraph there, with the phase-order pointer left as `§13`). Where
+> the two disagree, `docs/design.md` wins, per explicit operator instruction. Do not use this
+> file to derive DoD gates or phase boundaries — use `docs/design.md` §17 and whatever scope
+> the operator states in chat for the current session.
+
 # Job Syllabus — Design & Build Plan
 
 **A system that ingests game-industry job postings, extracts skill requirements, and ranks them by frequency — turning the job market into a study syllabus.**
