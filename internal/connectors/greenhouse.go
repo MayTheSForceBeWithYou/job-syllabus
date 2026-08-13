@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -36,7 +37,10 @@ type greenhouseJob struct {
 }
 
 func (c *GreenhouseConnector) Fetch(ctx context.Context, cfg CompanyConfig) ([]RawPosting, error) {
+	start := time.Now()
 	url := fmt.Sprintf("https://boards-api.greenhouse.io/v1/boards/%s/jobs?content=true", cfg.Token)
+	slog.Info("greenhouse: fetching", "company", cfg.Slug, "url", url)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("greenhouse: build request for %s: %w", cfg.Slug, err)
@@ -45,16 +49,22 @@ func (c *GreenhouseConnector) Fetch(ctx context.Context, cfg CompanyConfig) ([]R
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		slog.Error("greenhouse: request failed", "company", cfg.Slug, "url", url,
+			"elapsed", time.Since(start).String(), "error", err.Error())
 		return nil, fmt.Errorf("greenhouse: fetch %s: %w", cfg.Slug, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		slog.Error("greenhouse: non-200 response", "company", cfg.Slug, "url", url,
+			"status", resp.StatusCode, "elapsed", time.Since(start).String())
 		return nil, fmt.Errorf("greenhouse: %s returned status %d", cfg.Slug, resp.StatusCode)
 	}
 
 	var parsed greenhouseResponse
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		slog.Error("greenhouse: decode failed", "company", cfg.Slug, "url", url,
+			"elapsed", time.Since(start).String(), "error", err.Error())
 		return nil, fmt.Errorf("greenhouse: decode response for %s: %w", cfg.Slug, err)
 	}
 
@@ -70,5 +80,8 @@ func (c *GreenhouseConnector) Fetch(ctx context.Context, cfg CompanyConfig) ([]R
 			BodyHTML:   j.Content,
 		})
 	}
+
+	slog.Info("greenhouse: fetch complete", "company", cfg.Slug,
+		"jobs", len(postings), "elapsed", time.Since(start).String())
 	return postings, nil
 }

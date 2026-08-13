@@ -4,9 +4,11 @@ services:
     container_name: job-syllabus-dynamodb-local
     ports:
       - "8000:8000"
-    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/data"]
-    volumes:
-      - dynamodb-data:/data
-
-volumes:
-  dynamodb-data:
+    # -inMemory avoids persisting to a mounted volume. It was -sharedDb +
+    # -dbPath /data before, but the SQLite backend couldn't open its file on
+    # the Windows Docker Desktop volume mount (crash-looped every 3s with
+    # "unable to open database file" - see docker logs), which made every
+    # request hang until the client's own timeout fired instead of getting a
+    # fast error. Local dev doesn't need the data to survive a restart
+    # anyway; `make ingest` repopulates it.
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]

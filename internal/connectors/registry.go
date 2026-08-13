@@ -2,6 +2,7 @@ package connectors
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 )
@@ -12,10 +13,27 @@ import (
 // operator reaches us instead of just blocking the IP.
 const userAgent = "job-syllabus/0.1 (+https://github.com/MayTheSForceBeWithYou/job-syllabus)"
 
-// NewDefaultHTTPClient returns the shared client connectors should use:
-// bounded timeout, no surprises.
+// NewDefaultHTTPClient returns the shared client connectors should use.
+// Client.Timeout bounds the whole round trip (dial + TLS + headers + body),
+// but that alone hung for 34+ minutes in practice — worth not trusting on
+// its own. The Transport below adds explicit sub-timeouts on each phase so
+// a stuck DNS lookup or a server that accepts the connection but never
+// sends headers fails fast and identifiably, instead of however Client.Timeout
+// happens to interact with a hung phase.
 func NewDefaultHTTPClient() *http.Client {
-	return &http.Client{Timeout: 15 * time.Second}
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	return &http.Client{
+		Timeout:   15 * time.Second,
+		Transport: transport,
+	}
 }
 
 // NewRegistry builds the ATS-name -> Connector map used to dispatch

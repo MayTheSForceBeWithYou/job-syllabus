@@ -13,8 +13,10 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,20 +32,36 @@ func main() {
 		log.Fatal("usage: ingest [ingest|report]")
 	}
 
-	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger) // connectors/store packages log via slog.Default()
+
+	// Overall deadline for the whole run, so a chain of misbehaving
+	// companies still terminates instead of hanging indefinitely (this is
+	// exactly what happened before: no deadline anywhere, so it ran for
+	// 34+ minutes in silence).
+	runTimeout := envDuration("INGEST_TIMEOUT", 15*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
+	defer cancel()
+
 	endpoint := envOr("DYNAMODB_ENDPOINT", "http://localhost:8000")
 
-	s, err := store.New(ctx, endpoint)
+	storeCtx, storeCancel := context.WithTimeout(ctx, 30*time.Second)
+	s, err := store.New(storeCtx, endpoint)
+	storeCancel()
 	if err != nil {
 		log.Fatalf("connect to store: %v", err)
 	}
-	if err := s.EnsureTable(ctx); err != nil {
+
+	tableCtx, tableCancel := context.WithTimeout(ctx, 30*time.Second)
+	err = s.EnsureTable(tableCtx)
+	tableCancel()
+	if err != nil {
 		log.Fatalf("ensure table: %v", err)
 	}
 
 	switch os.Args[1] {
 	case "ingest":
-		runIngest(ctx, s)
+		runIngest(ctx, s, logger)
 	case "report":
 		runReport(ctx, s)
 	default:
@@ -58,8 +76,21 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-func runIngest(ctx context.Context, s *store.Store) {
+func envDuration(key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	secs, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return time.Duration(secs) * time.Second
+}
+
+func runIngest(ctx context.Context, s *store.Store, logger *slog.Logger) {
 	companiesPath := envOr("COMPANIES_FILE", "data/companies.yaml")
+	companyTimeout := envDuration("COMPANY_TIMEOUT", 20*time.Second)
 
 	httpClient := connectors.NewDefaultHTTPClient()
 	registry := connectors.NewRegistry(httpClient)
@@ -68,20 +99,30 @@ func runIngest(ctx context.Context, s *store.Store) {
 	if err != nil {
 		log.Fatalf("load %s: %v", companiesPath, err)
 	}
+	logger.Info("ingest run starting", "companies", len(companies), "companyTimeout", companyTimeout.String())
 
 	now := time.Now().UTC()
-	var totalFetched, totalMatched, totalCreated, totalUpdated int
+	var totalFetched, totalMatched, totalCreated, totalUpdated, totalSkipped int
 
-	for _, c := range companies {
+	for i, c := range companies {
+		logger.Info("company starting", "index", i+1, "of", len(companies), "company", c.Slug, "ats", c.ATS)
+
 		conn, err := connectors.Get(registry, c.ATS)
 		if err != nil {
-			log.Printf("%s: %v", c.Slug, err)
+			logger.Error("no connector registered, skipping company", "company", c.Slug, "ats", c.ATS, "error", err.Error())
+			totalSkipped++
 			continue
 		}
 
-		raw, err := conn.Fetch(ctx, c)
+		companyCtx, companyCancel := context.WithTimeout(ctx, companyTimeout)
+		raw, err := connectors.FetchWithRetry(companyCtx, logger, c.Slug, func(fetchCtx context.Context) ([]connectors.RawPosting, error) {
+			return conn.Fetch(fetchCtx, c)
+		})
+		companyCancel()
 		if err != nil {
-			log.Printf("%s: fetch failed: %v", c.Slug, err)
+			// FetchWithRetry already logged the ERROR with elapsed time and
+			// cause (timeout vs. non-200 vs. decode failure etc).
+			totalSkipped++
 			continue
 		}
 		totalFetched += len(raw)
@@ -93,12 +134,12 @@ func runIngest(ctx context.Context, s *store.Store) {
 		for _, rp := range matched {
 			posting, err := toPosting(c, rp, now)
 			if err != nil {
-				log.Printf("%s: skip posting %s: %v", c.Slug, rp.ExternalID, err)
+				logger.Warn("skipping unparseable posting", "company", c.Slug, "externalId", rp.ExternalID, "error", err.Error())
 				continue
 			}
 			wasCreated, err := s.UpsertPosting(ctx, posting)
 			if err != nil {
-				log.Printf("%s: store posting %s: %v", c.Slug, posting.ID, err)
+				logger.Warn("failed to store posting", "company", c.Slug, "postingId", posting.ID, "error", err.Error())
 				continue
 			}
 			if wasCreated {
@@ -110,12 +151,14 @@ func runIngest(ctx context.Context, s *store.Store) {
 		totalCreated += created
 		totalUpdated += updated
 
-		fmt.Printf("%-20s fetched=%-4d role-matched=%-4d new=%-4d updated=%-4d\n",
-			c.Slug, len(raw), len(matched), created, updated)
+		logger.Info("company complete", "company", c.Slug,
+			"fetched", len(raw), "roleMatched", len(matched), "new", created, "updated", updated)
 	}
 
-	fmt.Printf("\ncompanies=%d fetched=%d role-matched=%d new=%d updated=%d\n",
-		len(companies), totalFetched, totalMatched, totalCreated, totalUpdated)
+	logger.Info("ingest run complete",
+		"companies", len(companies), "skipped", totalSkipped,
+		"fetched", totalFetched, "roleMatched", totalMatched,
+		"new", totalCreated, "updated", totalUpdated)
 }
 
 // filterByRole keeps postings whose title contains any of the company's

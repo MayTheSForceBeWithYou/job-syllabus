@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -43,7 +44,10 @@ type leverPosting struct {
 }
 
 func (c *LeverConnector) Fetch(ctx context.Context, cfg CompanyConfig) ([]RawPosting, error) {
+	start := time.Now()
 	url := fmt.Sprintf("https://api.lever.co/v0/postings/%s?mode=json", cfg.Token)
+	slog.Info("lever: fetching", "company", cfg.Slug, "url", url)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("lever: build request for %s: %w", cfg.Slug, err)
@@ -52,16 +56,22 @@ func (c *LeverConnector) Fetch(ctx context.Context, cfg CompanyConfig) ([]RawPos
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		slog.Error("lever: request failed", "company", cfg.Slug, "url", url,
+			"elapsed", time.Since(start).String(), "error", err.Error())
 		return nil, fmt.Errorf("lever: fetch %s: %w", cfg.Slug, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		slog.Error("lever: non-200 response", "company", cfg.Slug, "url", url,
+			"status", resp.StatusCode, "elapsed", time.Since(start).String())
 		return nil, fmt.Errorf("lever: %s returned status %d", cfg.Slug, resp.StatusCode)
 	}
 
 	var parsed []leverPosting
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		slog.Error("lever: decode failed", "company", cfg.Slug, "url", url,
+			"elapsed", time.Since(start).String(), "error", err.Error())
 		return nil, fmt.Errorf("lever: decode response for %s: %w", cfg.Slug, err)
 	}
 
@@ -77,5 +87,8 @@ func (c *LeverConnector) Fetch(ctx context.Context, cfg CompanyConfig) ([]RawPos
 			Structured: map[string]any{"lists": p.Lists},
 		})
 	}
+
+	slog.Info("lever: fetch complete", "company", cfg.Slug,
+		"postings", len(postings), "elapsed", time.Since(start).String())
 	return postings, nil
 }

@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -29,13 +31,19 @@ type Store struct {
 // phase (docs/design.md §0.2: never invent AWS resource config outside
 // Terraform).
 func New(ctx context.Context, endpoint string) (*Store, error) {
+	// Explicit HTTP client so the SDK's own requests (DescribeTable,
+	// PutItem, etc.) can't hang indefinitely either — same audit finding
+	// as the ATS connectors: never rely on a client without a stated
+	// Timeout.
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithRegion("us-west-2"),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("local", "local", "")),
+		config.WithHTTPClient(&http.Client{Timeout: 10 * time.Second}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("load aws config: %w", err)
 	}
+	slog.Info("store: connecting", "endpoint", endpoint)
 
 	client := dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
 		if endpoint != "" {
@@ -50,10 +58,12 @@ func New(ctx context.Context, endpoint string) (*Store, error) {
 // already exist. This is a DynamoDB Local convenience for Phase 1 — the
 // real table is Terraform-managed starting Phase 2 (docs/design.md §9).
 func (s *Store) EnsureTable(ctx context.Context) error {
+	start := time.Now()
 	_, err := s.client.DescribeTable(ctx, &dynamodb.DescribeTableInput{
 		TableName: aws.String(TableName),
 	})
 	if err == nil {
+		slog.Info("store: table exists", "table", TableName, "elapsed", time.Since(start).String())
 		return nil // already exists
 	}
 
@@ -61,6 +71,8 @@ func (s *Store) EnsureTable(ctx context.Context) error {
 	if !errors.As(err, &notFound) {
 		return fmt.Errorf("describe table: %w", err)
 	}
+
+	slog.Info("store: creating table", "table", TableName)
 
 	_, err = s.client.CreateTable(ctx, &dynamodb.CreateTableInput{
 		TableName:   aws.String(TableName),
@@ -101,5 +113,9 @@ func (s *Store) EnsureTable(ctx context.Context) error {
 	}
 
 	waiter := dynamodb.NewTableExistsWaiter(s.client)
-	return waiter.Wait(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(TableName)}, tableWaitTimeout)
+	if err := waiter.Wait(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(TableName)}, tableWaitTimeout); err != nil {
+		return fmt.Errorf("wait for table active: %w", err)
+	}
+	slog.Info("store: table created", "table", TableName, "elapsed", time.Since(start).String())
+	return nil
 }
