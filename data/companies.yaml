@@ -1,0 +1,41 @@
+# Company registry — docs/design.md §5. Adding a company is a data change,
+# never a code change: find its ATS board (open the careers page, watch the
+# network tab for the XHR domain), confirm the token below resolves, add an
+# entry.
+#
+# Verified live (HTTP 200, board tokens confirmed) 2026-08-13.
+
+- slug: epic-games
+  name: Epic Games
+  tier: platform
+  ats: greenhouse
+  token: epicgames
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live"]
+
+- slug: riot-games
+  name: Riot Games
+  tier: aaa
+  ats: greenhouse
+  token: riotgames
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live"]
+
+- slug: discord
+  name: Discord
+  tier: platform
+  ats: greenhouse
+  token: discord
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live"]
+
+- slug: roblox
+  name: Roblox
+  tier: platform
+  ats: greenhouse
+  token: roblox
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live"]
+
+- slug: kabam
+  name: Kabam
+  tier: midsize
+  ats: lever
+  token: kabam
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live"]
