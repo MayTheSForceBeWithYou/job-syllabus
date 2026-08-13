@@ -1,0 +1,40 @@
+# Go
+/bin/
+*.exe
+*.exe~
+*.test
+*.out
+vendor/
+
+# Env / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# DynamoDB Local
+.dynamodb/
+shared-local-instance.db
+
+# Docker
+docker-compose.override.yml
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node / Expo (future client work)
+node_modules/
+.expo/
+dist/
+web-build/
+
+# Terraform (future infra work)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
