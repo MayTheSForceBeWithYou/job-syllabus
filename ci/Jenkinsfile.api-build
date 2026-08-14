@@ -74,52 +74,67 @@ pipeline {
                 // `docker login` client to run either) using the same
                 // ECR password every other stage already fetches via the
                 // AWS CLI.
+                //
+                // returnStatus, not the default fail-on-nonzero: Kaniko's
+                // own between-stage filesystem reset (this Dockerfile is
+                // multi-stage, build -> distroless) deletes everything not
+                // explicitly protected, which reliably breaks the Durable
+                // Task Plugin's own post-completion bookkeeping — a real
+                // run confirmed the build+push finishes correctly (a real
+                // digest landed in ECR) but Jenkins still marked the stage
+                // FAILURE ~8 minutes later because the wrapper's own
+                // mv/sh-dependent completion signal never arrived. Trying
+                // to protect those binaries with --ignore-path doesn't
+                // work either: a further real run showed --ignore-path
+                // also blocks Kaniko from unpacking a base image's own
+                // content into an ignored path, so protecting /usr broke
+                // `go mod download` outright ("go: not found") — the build
+                // stage's own golang:1.26-bookworm toolchain never landed.
+                // Instead of fighting Kaniko's process model further, this
+                // stage's own exit status is treated as unreliable; the
+                // next stage verifies the push independently against ECR,
+                // the actual source of truth.
+                script {
+                    def status = sh(returnStatus: true, script: '''
+                      mkdir -p /kaniko/.docker
+                      ECR_HOST="${ECR_REPO%%/*}"
+                      AUTH=$(printf "AWS:%s" "$(aws ecr get-login-password --region "$AWS_REGION")" | base64 -w0)
+                      printf '{"auths":{"%s":{"auth":"%s"}}}' "$ECR_HOST" "$AUTH" > /kaniko/.docker/config.json
+                      # --single-snapshot: one full-filesystem snapshot at
+                      # the end instead of one per Dockerfile instruction —
+                      # this Dockerfile only has 2 RUN/COPY pairs, so most
+                      # of that per-instruction snapshotting was pure
+                      # overhead. --ignore-path=/home/jenkins protects the
+                      # JNLP agent's own workspace/jar cache from Kaniko's
+                      # between-stage filesystem wipe; it is not, and
+                      # cannot be, a complete fix (see above).
+                      /kaniko/executor --dockerfile=Dockerfile --context="dir://$(pwd)" \
+                        --destination="$ECR_REPO:$IMAGE_TAG" --build-arg=BINARY=api --cache=false \
+                        --single-snapshot --ignore-path=/home/jenkins
+                    ''')
+                    echo "Kaniko step exited ${status} — this can be a false failure if the JNLP wrapper died after a successful push; the next stage verifies against ECR directly."
+                }
+            }
+        }
+        stage('Verify image pushed') {
+            // The authoritative success signal for the Build image stage
+            // — its own exit status can't be trusted (see above), but a
+            // real image digest actually landing in ECR can't be faked by
+            // a dead agent connection. Runs on the ordinary fargate-agent,
+            // not kaniko-agent, since that agent's task may already be
+            // gone by the time this stage starts.
+            steps {
                 sh '''
-                  mkdir -p /kaniko/.docker
-                  ECR_HOST="${ECR_REPO%%/*}"
-                  AUTH=$(printf "AWS:%s" "$(aws ecr get-login-password --region "$AWS_REGION")" | base64 -w0)
-                  printf '{"auths":{"%s":{"auth":"%s"}}}' "$ECR_HOST" "$AUTH" > /kaniko/.docker/config.json
-                  # --single-snapshot: one full-filesystem snapshot at the
-                  # end instead of one per Dockerfile instruction — this
-                  # Dockerfile only has 2 RUN/COPY pairs, so most of that
-                  # per-instruction snapshotting was pure overhead.
-                  #
-                  # --ignore-path=/home/jenkins protects the JNLP agent's
-                  # own workspace/jar cache from Kaniko's between-stage
-                  # filesystem wipe — without it, a real run confirmed
-                  # Kaniko deletes it along with everything else not
-                  # explicitly protected. That alone wasn't sufficient,
-                  # though: a further real run got all the way through the
-                  # build AND the push (confirmed via a real digest landing
-                  # in ECR) but then hung for ~8 minutes before Jenkins
-                  # declared the durable-task wrapper unresponsive and
-                  # failed the build anyway. Root cause: the wrapper's own
-                  # post-completion bookkeeping (reporting the exit code
-                  # back to Jenkins) needs external binaries like `mv`/`sh`
-                  # under /bin, /usr, /lib, /etc — all deleted by the same
-                  # filesystem wipe. Those are protected here too. This is
-                  # safe against the built image containing stray Debian
-                  # cruft from the ignored paths: --ignore-path excludes a
-                  # path from Kaniko's snapshot diff entirely (its
-                  # documented purpose — keeping a live CI process's own
-                  # files out of the image being built), not just from
-                  # deletion, so nothing under these paths — ours or the
-                  # base image's leftovers — ends up in the pushed layers.
-                  # That's also why the Dockerfile places the built binary
-                  # at /app/bin rather than /bin/app: it's the one
-                  # legitimate build artifact that would otherwise fall
-                  # inside an ignored path and silently disappear from the
-                  # final image.
-                  /kaniko/executor --dockerfile=Dockerfile --context="dir://$(pwd)" \
-                    --destination="$ECR_REPO:$IMAGE_TAG" --build-arg=BINARY=api --cache=false \
-                    --single-snapshot \
-                    --ignore-path=/home/jenkins \
-                    --ignore-path=/bin \
-                    --ignore-path=/sbin \
-                    --ignore-path=/usr \
-                    --ignore-path=/lib \
-                    --ignore-path=/lib64 \
-                    --ignore-path=/etc
+                  for i in $(seq 1 20); do
+                    if aws ecr describe-images --repository-name job-syllabus/api \
+                        --image-ids imageTag="$IMAGE_TAG" --region "$AWS_REGION" >/dev/null 2>&1; then
+                      echo "Found $ECR_REPO:$IMAGE_TAG in ECR"
+                      exit 0
+                    fi
+                    sleep 15
+                  done
+                  echo "Image $ECR_REPO:$IMAGE_TAG never appeared in ECR" >&2
+                  exit 1
                 '''
             }
         }
