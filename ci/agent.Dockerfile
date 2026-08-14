@@ -84,4 +84,13 @@ RUN curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tm
     && /tmp/aws/install \
     && rm -rf /tmp/awscliv2.zip /tmp/aws
 
-USER jenkins
+# Deliberately no `USER jenkins` here (this image used to drop to it) —
+# Kaniko itself unconditionally chowns its own working directory at
+# startup regardless of where it's pointed, which only root can do.
+# Confirmed against two real runs: redirecting --kaniko-dir to a
+# jenkins-owned path didn't avoid it ("chown ...: operation not
+# permitted"), and pre-chowning /kaniko to jenkins at image-build time
+# didn't either — kaniko isn't designed to run non-root at all (its own
+# official image doesn't), so this stops fighting that. Acceptable here:
+# an ephemeral, network-isolated, single-build-then-destroyed Fargate
+# task, not a shared or long-lived host.
