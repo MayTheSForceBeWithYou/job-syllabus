@@ -79,6 +79,21 @@ jenkins:
             taskrole: "${AGENT_TASK_ROLE_ARN}"
             remoteFSRoot: "/home/jenkins"
             uniqueRemoteFSRoot: true
+            # Unset, the plugin's dynamically-created task definition has
+            # NO logConfiguration at all — the agent container's stdout/
+            # stderr goes nowhere retrievable, which made a real connect
+            # failure undiagnosable after two tasks came up RUNNING but
+            # never registered as online computers. Reuses the same
+            # shared /ecs/job-syllabus log group and execution role
+            # service-api already logs to successfully.
+            logDriver: "awslogs"
+            logDriverOptions:
+              - name: "awslogs-group"
+                value: "/ecs/job-syllabus"
+              - name: "awslogs-region"
+                value: "${AWS_REGION}"
+              - name: "awslogs-stream-prefix"
+                value: "jenkins-agent"
 
 unclassified:
   location:
