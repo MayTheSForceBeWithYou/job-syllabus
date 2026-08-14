@@ -79,18 +79,8 @@ jenkins:
             agentContainerName: "jenkins-agent"
             launchType: "FARGATE"
             operatingSystemFamily: "LINUX"
-            # Bumped twice now. 1024/2048 -> 2048/4096 didn't fix it either
-            # — confirmed via ECS task inspection that Jenkins itself
-            # (stopCode UserInitiated, "Stopped by Jenkins Amazon ECS
-            # PlugIn") kills the agent, not AWS/OOM, always right as
-            # Kaniko's silent, CPU-heavy full-filesystem snapshot phase
-            # runs — consistent with that phase starving the JNLP agent
-            # process of enough scheduling time to answer Jenkins' channel
-            # keep-alive pings before its timeout. More headroom alongside
-            # the Jenkinsfile's --single-snapshot (less snapshot work
-            # overall) to actually give the agent process room to breathe.
-            cpu: "4096"
-            memory: "8192"
+            cpu: "1024"
+            memory: "2048"
             networkMode: "awsvpc"
             assignPublicIp: true
             subnets: "${FARGATE_SUBNET_IDS}"
@@ -126,6 +116,41 @@ jenkins:
                 value: "${AWS_REGION}"
               - name: "awslogs-stream-prefix"
                 value: "jenkins-agent"
+          # Dedicated, minimal agent for exactly one job: build+push the
+          # api image with Kaniko (ci/kaniko-agent.Dockerfile). Split out
+          # of the general-purpose fargate-agent template after Kaniko
+          # repeatedly killed that agent's JNLP connection mid-build —
+          # root cause: Kaniko has no daemon/overlayfs isolation, so it
+          # unpacks the built image's base rootfs directly onto whatever
+          # container it's running in, which on a heavyweight, tool-laden
+          # Debian-family image risked corrupting shared system paths out
+          # from under the live JNLP process. This image has nothing else
+          # installed to corrupt. ci/Jenkinsfile.api-build's Build image
+          # stage is the only thing that runs on this label.
+          - templateName: "kaniko-agent"
+            label: "kaniko-agent"
+            image: "${KANIKO_AGENT_ECR_REPO_URL}:latest"
+            agentContainerName: "jenkins-agent"
+            launchType: "FARGATE"
+            operatingSystemFamily: "LINUX"
+            cpu: "2048"
+            memory: "4096"
+            networkMode: "awsvpc"
+            assignPublicIp: true
+            subnets: "${FARGATE_SUBNET_IDS}"
+            securityGroups: "${FARGATE_SG_ID}"
+            executionRole: "${TASK_EXECUTION_ROLE_ARN}"
+            taskrole: "${AGENT_TASK_ROLE_ARN}"
+            remoteFSRoot: "/home/jenkins"
+            uniqueRemoteFSRoot: true
+            logDriver: "awslogs"
+            logDriverOptions:
+              - name: "awslogs-group"
+                value: "/ecs/job-syllabus"
+              - name: "awslogs-region"
+                value: "${AWS_REGION}"
+              - name: "awslogs-stream-prefix"
+                value: "kaniko-agent"
 
 unclassified:
   location:

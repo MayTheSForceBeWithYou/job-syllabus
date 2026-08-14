@@ -59,6 +59,11 @@ variable "agent_ecr_repo_url" {
   type        = string
 }
 
+variable "kaniko_agent_ecr_repo_url" {
+  description = "ECR repo URL for the dedicated Kaniko build agent image (ci/kaniko-agent.Dockerfile) — split out from agent_ecr_repo_url after Kaniko corrupted the general-purpose agent's shared filesystem mid-build."
+  type        = string
+}
+
 variable "fargate_sg_id" {
   type = string
 }

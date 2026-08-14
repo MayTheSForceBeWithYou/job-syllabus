@@ -33,17 +33,18 @@ module "observability" {
 module "jenkins" {
   source = "../../modules/jenkins"
 
-  vpc_id                  = module.network.vpc_id
-  public_subnet_ids       = module.network.public_subnet_ids
-  jenkins_alb_sg_id       = module.network.jenkins_alb_sg_id
-  jenkins_ec2_sg_id       = module.network.jenkins_ec2_sg_id
-  dns_zone_id             = data.terraform_remote_state.data.outputs.dns_zone_id
-  dns_subdomain           = data.terraform_remote_state.data.outputs.dns_subdomain
-  restore_from_snapshot   = var.restore_from_snapshot
-  ecs_cluster_arn         = module.ecs_cluster.cluster_arn
-  agent_ecr_repo_url      = data.terraform_remote_state.data.outputs.ecr_repository_urls["agent"]
-  fargate_sg_id           = module.network.fargate_sg_id
-  task_execution_role_arn = module.ecs_cluster.task_execution_role_arn
+  vpc_id                    = module.network.vpc_id
+  public_subnet_ids         = module.network.public_subnet_ids
+  jenkins_alb_sg_id         = module.network.jenkins_alb_sg_id
+  jenkins_ec2_sg_id         = module.network.jenkins_ec2_sg_id
+  dns_zone_id               = data.terraform_remote_state.data.outputs.dns_zone_id
+  dns_subdomain             = data.terraform_remote_state.data.outputs.dns_subdomain
+  restore_from_snapshot     = var.restore_from_snapshot
+  ecs_cluster_arn           = module.ecs_cluster.cluster_arn
+  agent_ecr_repo_url        = data.terraform_remote_state.data.outputs.ecr_repository_urls["agent"]
+  kaniko_agent_ecr_repo_url = data.terraform_remote_state.data.outputs.ecr_repository_urls["kaniko-agent"]
+  fargate_sg_id             = module.network.fargate_sg_id
+  task_execution_role_arn   = module.ecs_cluster.task_execution_role_arn
 }
 
 module "service_api" {

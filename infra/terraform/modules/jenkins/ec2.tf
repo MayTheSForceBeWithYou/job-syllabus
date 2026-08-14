@@ -36,16 +36,17 @@ resource "aws_instance" "jenkins" {
   }
 
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
-    repo_url                = var.repo_url
-    admin_password_ssm_name = aws_ssm_parameter.jenkins_admin_password.name
-    aws_region              = data.aws_region.current.name
-    ecs_cluster_arn         = var.ecs_cluster_arn
-    agent_ecr_repo_url      = var.agent_ecr_repo_url
-    fargate_subnet_ids      = join(",", var.public_subnet_ids)
-    fargate_sg_id           = var.fargate_sg_id
-    task_execution_role_arn = var.task_execution_role_arn
-    agent_task_role_arn     = aws_iam_role.jenkins_agent.arn
-    jenkins_private_url     = "http://${local.jenkins_private_ip}:8080/"
+    repo_url                  = var.repo_url
+    admin_password_ssm_name   = aws_ssm_parameter.jenkins_admin_password.name
+    aws_region                = data.aws_region.current.name
+    ecs_cluster_arn           = var.ecs_cluster_arn
+    agent_ecr_repo_url        = var.agent_ecr_repo_url
+    kaniko_agent_ecr_repo_url = var.kaniko_agent_ecr_repo_url
+    fargate_subnet_ids        = join(",", var.public_subnet_ids)
+    fargate_sg_id             = var.fargate_sg_id
+    task_execution_role_arn   = var.task_execution_role_arn
+    agent_task_role_arn       = aws_iam_role.jenkins_agent.arn
+    jenkins_private_url       = "http://${local.jenkins_private_ip}:8080/"
   })
   user_data_replace_on_change = true
 

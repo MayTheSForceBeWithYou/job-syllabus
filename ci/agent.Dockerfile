@@ -4,19 +4,21 @@
 # JNLP/WebSocket protocol out of the box; everything below is the tooling
 # api-build/infra-plan/infra-apply/client-build actually need.
 #
-# Docker-in-Docker on Fargate is painful (§10). `docker buildx build`
-# needs a real daemon to talk to — confirmed against a real CI run
-# ("failed to connect to the docker API at unix:///var/run/docker.sock:
-# ... no such file or directory"), since this container deliberately runs
-# without one. Kaniko instead: it builds images in userspace with no
-# daemon at all, exactly the alternative §10 names.
-FROM gcr.io/kaniko-project/executor:latest AS kaniko
-
+# Docker-in-Docker on Fargate is painful (§10). This image no longer
+# carries Kaniko for the actual image build — see
+# ci/kaniko-agent.Dockerfile and its header comment for why that had to
+# move to its own dedicated, minimal agent (Kaniko has no daemon/
+# overlayfs isolation, so it unpacks the built image's base rootfs
+# directly onto whatever container it's running in; sharing that
+# container with a live JNLP process and a dozen other CI tools on a
+# heavily-overlapping Debian-family filesystem was corrupting things
+# out from under the build, confirmed against several real, otherwise
+# fully green runs that died at the exact same point every time). This
+# image is Vet/Lint/Test/Extraction-gate/Trivy/infra-plan/infra-apply
+# tooling only now.
 FROM jenkins/inbound-agent:latest-jdk21
 
 USER root
-
-COPY --from=kaniko /kaniko/executor /kaniko/executor
 
 # Matches go.mod's declared version (and the local dev toolchain) — a
 # mismatch here is what made golangci-lint auto-fetch an intermediate
@@ -84,13 +86,4 @@ RUN curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tm
     && /tmp/aws/install \
     && rm -rf /tmp/awscliv2.zip /tmp/aws
 
-# Deliberately no `USER jenkins` here (this image used to drop to it) —
-# Kaniko itself unconditionally chowns its own working directory at
-# startup regardless of where it's pointed, which only root can do.
-# Confirmed against two real runs: redirecting --kaniko-dir to a
-# jenkins-owned path didn't avoid it ("chown ...: operation not
-# permitted"), and pre-chowning /kaniko to jenkins at image-build time
-# didn't either — kaniko isn't designed to run non-root at all (its own
-# official image doesn't), so this stops fighting that. Acceptable here:
-# an ephemeral, network-isolated, single-build-then-destroyed Fargate
-# task, not a shared or long-lived host.
+USER jenkins

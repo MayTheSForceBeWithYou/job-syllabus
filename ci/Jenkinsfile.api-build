@@ -51,16 +51,29 @@ pipeline {
             steps { sh 'go test ./internal/extract/... -run TestExtractionPrecisionRecall -v' }
         }
         stage('Build image') {
+            // Its own dedicated, minimal agent — not the fargate-agent
+            // every other stage runs on. Kaniko has no daemon/overlayfs
+            // isolation, so it unpacks the built image's base rootfs
+            // directly onto whatever container it's running in; sharing
+            // that container with a live JNLP process and a dozen other
+            // CI tools on a heavily-overlapping Debian-family filesystem
+            // repeatedly killed the agent mid-build (confirmed against
+            // several otherwise fully green runs that died at the exact
+            // same point every time, regardless of resource sizing) —
+            // see ci/kaniko-agent.Dockerfile's header comment. A
+            // different agent means a fresh checkout here too.
+            agent { label 'kaniko-agent' }
             steps {
-                // Kaniko, not `docker buildx build`: this agent has no
-                // Docker daemon at all (§10, no privileged DinD on
-                // Fargate) — confirmed against a real CI run, which
-                // failed outright trying to reach
-                // unix:///var/run/docker.sock. Kaniko builds and pushes
-                // in userspace with no daemon involved; auth is a plain
-                // docker-config.json written by hand (no `docker login`
-                // client to run either) using the same ECR password
-                // every other stage already fetches via the AWS CLI.
+                checkout scm
+                // Kaniko, not `docker buildx build`: no Docker daemon at
+                // all (§10, no privileged DinD on Fargate) — confirmed
+                // against a real CI run, which failed outright trying to
+                // reach unix:///var/run/docker.sock. Kaniko builds and
+                // pushes in userspace with no daemon involved; auth is a
+                // plain docker-config.json written by hand (no
+                // `docker login` client to run either) using the same
+                // ECR password every other stage already fetches via the
+                // AWS CLI.
                 sh '''
                   mkdir -p /kaniko/.docker
                   ECR_HOST="${ECR_REPO%%/*}"
