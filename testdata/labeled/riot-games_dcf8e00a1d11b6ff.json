@@ -1,0 +1,62 @@
+{
+  "postingId": "dcf8e00a1d11b6ff",
+  "title": "Manager, Software Engineering - Publishing Platform, Core Game Loop",
+  "company": "riot-games",
+  "rawPosting": {
+    "bodyHtml": "\u0026lt;p\u0026gt;Riot engineers bring deep knowledge of specific technical areas but also value the opportunity to work in a variety of broader domains. As an Engineering Manager, you’ll guide an engineering team through all the phases of the software development and operations lifecycle. You’ll also serve as a people manager, mentor, and coach for the engineers, overseeing performance management, growth opportunities, and accountability.\u0026lt;/p\u0026gt;\n\u0026lt;p\u0026gt;The Core Game Loop owns services that power the player experience while they are in game and deliver data to downstream services after a game is completed. This includes game provisioning, game data delivery, and services that power leaderboards and match history. By concentrating expertise in game platforms, we are able to offer robust, scalable features to all current and future Riot games. As a\u0026amp;nbsp;\u0026lt;strong\u0026gt;Manager, Software Engineering\u0026amp;nbsp;\u0026lt;/strong\u0026gt;on the Core Game Loop team,\u0026amp;nbsp; you will partner with the teams that create every Riot game, central technology teams, and teams in Tencent to ensure we are making excellent decisions, upholding a high quality bar, and operating efficiently in service of those players. You\u0026#39;ll identify opportunities to centralize functionality and architect solutions that enable scalability and reliability worldwide. You will report to the Senior Engineering Manager of the Game Foundations org within the Publishing Platform.\u0026lt;/p\u0026gt;\n\u0026lt;h3\u0026gt;\u0026lt;strong\u0026gt;Responsibilities\u0026lt;/strong\u0026gt;\u0026lt;/h3\u0026gt;\n\u0026lt;ul\u0026gt;\n\u0026lt;li\u0026gt;Manage a team of 5+ software engineers; coaching them, providing performance management, identifying growth opportunities, and ensuring positive results\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Partner and collaborate with Product Leads, Delivery Leads, and Technical Leads within the team and within Game Foundations org to align on the plan the team executes against\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Support the technical vision and roadmap by allocating engineers and skill sets to meet goals and deliver results\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Own the interviewing and onboarding process for new engineering team members\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Be accountable for the technical health of the products owned by the team\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Stay hands-on with the team\u0026#39;s tech, overseeing the technical design, and deliverables of the team and working with the team\u0026#39;s technical leadership\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Regularly engage with the codebase by participating in code reviews and non-critical tasks\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Build healthy relationships with other engineering teams across Riot globally, in order to foster cross-team collaboration\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Own and operate live services, meeting reliability expectations, handling emergent issues, and supporting engineers during on-call troubleshooting\u0026lt;/li\u0026gt;\n\u0026lt;/ul\u0026gt;\n\u0026lt;h3\u0026gt;\u0026lt;strong\u0026gt;Required Qualifications\u0026lt;/strong\u0026gt;\u0026lt;/h3\u0026gt;\n\u0026lt;ul\u0026gt;\n\u0026lt;li\u0026gt;Bachelor\u0026#39;s or Master’s degree in Computer Science or a related field, or equivalent professional experience\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;5+ years experience as a Software Engineer, preferably on technical product teams that build tooling for services and APIs\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;2+ years experience directly leading an engineering team either as an Engineering Manager or Technical Lead\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Experience managing engineers and actively participating in their growth and development\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Experience recruiting candidates and growing an engineering team\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Experience with distributed systems, microservices, and software at a high scale\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Experience operating and maintaining live services, including handling emergent issues and on-call troubleshooting\u0026lt;/li\u0026gt;\n\u0026lt;/ul\u0026gt;\n\u0026lt;h3\u0026gt;\u0026lt;strong\u0026gt;Desired Qualifications\u0026lt;/strong\u0026gt;\u0026lt;/h3\u0026gt;\n\u0026lt;ul\u0026gt;\n\u0026lt;li\u0026gt;Experience building services using Java, Kotlin, or Go\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Experience developing using cloud infrastructure (such as AWS, GCP), using containers and orchestration (such as Docker, Kubernetes), managed using infrastructure as code (such as Terraform, Ansible)\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Experience with CI/CD pipelines (such as GitHub Actions, Jenkins)\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Experience with relational databases (such as MySQL) and key value stores (such as Redis).\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Experience with queuing or stream-processing platform (such as Kafka)\u0026lt;/li\u0026gt;\n\u0026lt;/ul\u0026gt;\n\u0026lt;p\u0026gt;\u0026lt;em\u0026gt;For this role, you\u0026#39;ll find success through craft expertise, a collaborative spirit, and decision-making that prioritizes your fellow Rioters, who are the customers of your work. Being a dedicated fan of games is not necessary for this position!\u0026lt;/em\u0026gt;\u0026lt;/p\u0026gt;\n\u0026lt;h2\u0026gt;\u0026lt;strong\u0026gt;Our Perks:\u0026lt;/strong\u0026gt;\u0026lt;/h2\u0026gt;\n\u0026lt;p\u0026gt;Riot focuses on work/life balance, shown by our open paid time off policy and other perks such as flexible work schedules. We offer medical, dental, and life insurance, parental leave for you, your spouse/domestic partner, and children, and a 401k with company match. Check out our \u0026lt;a href=\u0026quot;https://www.riotgames.com/en/work-with-us/overview\u0026quot;\u0026gt;\u0026lt;strong\u0026gt;benefits pages\u0026lt;/strong\u0026gt;\u0026lt;/a\u0026gt; for more information.\u0026lt;/p\u0026gt;\n\u0026lt;p\u0026gt;At Riot Games, we\u0026amp;nbsp;\u0026lt;a class=\u0026quot;c-link\u0026quot; href=\u0026quot;https://www.riotgames.com/en/who-we-are/values\u0026quot; target=\u0026quot;_blank\u0026quot; data-stringify-link=\u0026quot;https://www.riotgames.com/en/who-we-are/values\u0026quot; data-sk=\u0026quot;tooltip_parent\u0026quot;\u0026gt;put players first\u0026lt;/a\u0026gt;. That mission drives every decision in our quest to create games and experiences that make it better to be a player. Whether you’re working directly on a new player-facing experience or you’re supporting the company as a whole, everyone at Riot is part of our mission. And just like in our games, we’re better when we work together. Our goal is to create collaborative teams where you are empowered to bring your unique perspective everyday. If that sounds like the kind of place you want to work, we’re looking forward to your application.\u0026lt;/p\u0026gt;\n\u0026lt;p\u0026gt;\u0026lt;em\u0026gt;It’s our policy to provide equal employment opportunity for all applicants and members of Riot Games, Inc. Riot Games makes reasonable accommodations for handicapped and disabled Rioters and does not unlawfully discriminate on the basis of race, color, religion, sex, sexual orientation, gender identity or expression, national origin, age, handicap, veteran status, marital status, criminal history, or any other category protected by applicable federal and state law. We consider for employment all qualified applicants, including those with criminal histories, in a manner consistent with applicable federal, state and local law, including the California Fair Chance Act, the City of Los Angeles Fair Chance Initiative for Hiring Ordinance, the Los Angeles County Fair Chance Ordinance for Employers, the San\u0026amp;nbsp;Francisco Fair Chance Ordinance, and the Washington Fair Chance Act.\u0026lt;/em\u0026gt;\u0026lt;/p\u0026gt;\n\u0026lt;p\u0026gt;\u0026lt;em\u0026gt;Per the Los Angeles County Fair Chance Ordinance, the following core duties may create a basis for disqualifying candidates with relevant criminal histories:\u0026lt;/em\u0026gt;\u0026lt;/p\u0026gt;\n\u0026lt;ul\u0026gt;\n\u0026lt;li\u0026gt;\u0026lt;em\u0026gt;Safeguarding confidential and sensitive Company data \u0026lt;/em\u0026gt;\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;\u0026lt;em\u0026gt;Communication with others, including Rioters and third parties such as vendors, and/or players, including minors\u0026lt;/em\u0026gt;\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;\u0026lt;em\u0026gt;Accessing Company assets, secure digital systems, and networks\u0026lt;/em\u0026gt;\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;\u0026lt;em\u0026gt;Ensuring a safe interactive environment for players and other Rioters\u0026lt;/em\u0026gt;\u0026lt;/li\u0026gt;\n\u0026lt;/ul\u0026gt;\n\u0026lt;p\u0026gt;\u0026lt;em\u0026gt;These duties are directly related to essential operations, safety, trust, and compliance obligations within our organization. Please note that job duties may evolve based on business needs and additional responsibilities may be assigned as necessary to maintain operational efficiency and security.\u0026amp;nbsp;\u0026lt;/em\u0026gt;\u0026lt;/p\u0026gt;"
+  },
+  "expectedSkills": [
+    {
+      "skillId": "ansible",
+      "required": false
+    },
+    {
+      "skillId": "aws",
+      "required": false
+    },
+    {
+      "skillId": "docker",
+      "required": false
+    },
+    {
+      "skillId": "gcp",
+      "required": false
+    },
+    {
+      "skillId": "github-actions",
+      "required": false
+    },
+    {
+      "skillId": "go-lang",
+      "required": false
+    },
+    {
+      "skillId": "jenkins",
+      "required": false
+    },
+    {
+      "skillId": "kafka",
+      "required": false
+    },
+    {
+      "skillId": "kubernetes",
+      "required": false
+    },
+    {
+      "skillId": "mysql",
+      "required": false
+    },
+    {
+      "skillId": "on-call",
+      "required": true
+    },
+    {
+      "skillId": "redis",
+      "required": false
+    },
+    {
+      "skillId": "terraform",
+      "required": false
+    }
+  ]
+}

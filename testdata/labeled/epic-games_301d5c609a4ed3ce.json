@@ -1,0 +1,46 @@
+{
+  "postingId": "301d5c609a4ed3ce",
+  "title": "Build Programmer",
+  "company": "epic-games",
+  "rawPosting": {
+    "bodyHtml": "\u0026lt;div class=\u0026quot;content-intro\u0026quot;\u0026gt;\u0026lt;h2\u0026gt;WHAT MAKES US EPIC?\u0026lt;/h2\u0026gt;\n\u0026lt;p\u0026gt;At the core of Epic’s success are talented, passionate people. Epic prides itself on creating a collaborative, welcoming, and creative environment. Whether it’s building award-winning games or crafting engine technology that enables others to make visually stunning interactive experiences, we’re always innovating.\u0026lt;/p\u0026gt;\n\u0026lt;p\u0026gt;Being Epic means being a part of a team that continually strives to do right by our community and users. We’re constantly innovating to raise the bar of engine and game development.\u0026lt;/p\u0026gt;\u0026lt;/div\u0026gt;\u0026lt;h2\u0026gt;ENGINEERING - GAMES\u0026lt;/h2\u0026gt;\n\u0026lt;h3\u0026gt;\u0026lt;strong\u0026gt;What We Do\u0026lt;/strong\u0026gt;\u0026lt;/h3\u0026gt;\n\u0026lt;p\u0026gt;Unreal projects have been leading the pack of real-time entertainment with our constantly growing team of engineering experts. We’re always improving on the tools and technology that empower content developers worldwide.\u0026lt;/p\u0026gt;\n\u0026lt;h3\u0026gt;\u0026lt;strong\u0026gt;What You\u0026#39;ll Do\u0026lt;/strong\u0026gt;\u0026lt;/h3\u0026gt;\n\u0026lt;p\u0026gt;We\u0026#39;re looking for a Build Programmer passionate about CI/CD, automation, and developer productivity to help build and maintain the infrastructure that powers Rocket League. You\u0026#39;ll partner with engineering, QA, production, and infrastructure teams to create reliable, scalable build systems that enable developers to ship high-quality software efficiently.\u0026lt;/p\u0026gt;\n\u0026lt;p\u0026gt;In this role, you\u0026#39;ll improve build pipelines, optimize developer workflows, and create tools that reduce friction across the software development lifecycle. Your work will directly impact how quickly teams can iterate, validate changes, and deliver world-class experiences to millions of users.\u0026lt;/p\u0026gt;\n\u0026lt;h3\u0026gt;\u0026lt;strong\u0026gt;In this role, you will\u0026lt;/strong\u0026gt;\u0026lt;/h3\u0026gt;\n\u0026lt;ul\u0026gt;\n\u0026lt;li\u0026gt;Collaborate with developers, QA, Production, and Release to optimize their workflows for Rocket League\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Design, maintain, and improve build automation systems and CI/CD pipelines for large-scale game projects\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Monitor build health, troubleshoot failures, and drive root-cause analysis to improve pipeline stability\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Own and support various tools and processes owned by the Rocket League Build Programming Team\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Support software releases by ensuring build systems remain reliable and responsive during critical milestones\u0026lt;/li\u0026gt;\n\u0026lt;/ul\u0026gt;\n\u0026lt;h3\u0026gt;\u0026lt;strong\u0026gt;What we\u0026#39;re looking for\u0026lt;/strong\u0026gt;\u0026lt;/h3\u0026gt;\n\u0026lt;ul\u0026gt;\n\u0026lt;li\u0026gt;Strong communication and collaboration skills, with the ability to work effectively across multidisciplinary teams\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Experience building and maintaining CI/CD pipelines and modern build automation systems\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Strong understanding of software build systems, dependency management, and release engineering best practices\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Proficiency with languages such as C#, Python, PowerShell, or Bash to automate development workflows\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Experience with version control systems such as Perforce or Git\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Familiarity with cloud infrastructure (AWS, Azure, or GCP) and administering Windows-based build environments; Linux experience is a plus\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Strong troubleshooting and problem-solving skills with a focus on reliability, scalability, and developer productivity\u0026lt;/li\u0026gt;\n\u0026lt;/ul\u0026gt;\n\u0026lt;h2\u0026gt;EPIC JOB + EPIC BENEFITS = EPIC LIFE\u0026lt;/h2\u0026gt;\n\u0026lt;p\u0026gt;We pay 100% for benefits for both employees (EEs) and dependents (deps). Our current benefits package includes coverage for medical, dental, and life insurance. We also offer supplemental benefits including daily meal vouchers, and commuter benefits for onsite employees.\u0026lt;/p\u0026gt;\u0026lt;div class=\u0026quot;content-conclusion\u0026quot;\u0026gt;\u0026lt;h2\u0026gt;ABOUT US\u0026lt;/h2\u0026gt;\n\u0026lt;p\u0026gt;Epic Games​ ​is a leading interactive entertainment company. For over 30 years we\u0026#39;ve been making award-winning games and engine technology that empowers others to make visually stunning games and 3D content that bring environments to life like never before. Epic\u0026#39;s award-winning Unreal Engine technology not only provides game developers the ability to build high-fidelity, interactive experiences for PC, console, mobile, and VR, it is also a tool being embraced by content creators across a variety of industries such as media and entertainment, automotive, and architectural design. As we continue to build our Engine technology and develop remarkable games, we strive to build teams of world-class talent.\u0026lt;/p\u0026gt;\n\u0026lt;h3\u0026gt;\u0026lt;strong\u0026gt;Like what you hear? Come be a part of something Epic!\u0026lt;/strong\u0026gt;\u0026lt;/h3\u0026gt;\n\u0026lt;p\u0026gt;Epic Games deeply values diverse teams and an inclusive work culture, and we are proud to be an Equal Opportunity employer. Learn more about our Equal Employment Opportunity (EEO) Policy \u0026lt;a href=\u0026quot;https://www.epicgames.com/site/en-US/eeo-policy\u0026quot; target=\u0026quot;_blank\u0026quot;\u0026gt;here\u0026lt;/a\u0026gt;.\u0026lt;/p\u0026gt;\n\u0026lt;p\u0026gt;\u0026lt;strong\u0026gt;Note to Recruitment Agencies: \u0026lt;/strong\u0026gt;Epic does not accept any unsolicited resumes or approaches from any unauthorized third party (including recruitment or placement agencies) (i.e., a third party with whom we do not have a negotiated and validly executed agreement). We will not pay any fees to any unauthorized third party. Further details on these matters can be found \u0026lt;a href=\u0026quot;https://www.epicgames.com/note-to-recruitment-agencies\u0026quot; target=\u0026quot;_blank\u0026quot;\u0026gt;here\u0026lt;/a\u0026gt;.\u0026lt;/p\u0026gt;\u0026lt;/div\u0026gt;"
+  },
+  "expectedSkills": [
+    {
+      "skillId": "aws",
+      "required": true
+    },
+    {
+      "skillId": "azure",
+      "required": true
+    },
+    {
+      "skillId": "bash",
+      "required": true
+    },
+    {
+      "skillId": "csharp",
+      "required": true
+    },
+    {
+      "skillId": "gcp",
+      "required": true
+    },
+    {
+      "skillId": "git",
+      "required": true
+    },
+    {
+      "skillId": "perforce",
+      "required": true
+    },
+    {
+      "skillId": "powershell",
+      "required": true
+    },
+    {
+      "skillId": "python",
+      "required": true
+    }
+  ]
+}

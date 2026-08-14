@@ -1,0 +1,72 @@
+{
+  "postingId": "c989bae747d41416",
+  "title": "Senior Backend DevOps Programmer - Contract",
+  "company": "kabam",
+  "rawPosting": {
+    "bodyHtml": "\u003cp\u003eAt Kabam, we’re constantly raising the bar of excellence in free-to-play gaming. We hire for passion and diversity so that we can triumph in our collective skill. Our teams are made up of a fusion of personalities and interests bound together by a collaborative nature, fun-loving culture, and a drive to do what it takes to make great games. And this is where you come in...\u003c/p\u003e\n\u003cp\u003eWe are looking for an individual who is passionate in building and maintaining advanced gaming systems and tools. Working collaboratively with other engineers and designers, you will have a significant impact and influence in the direction of Kabam’s games. If leading and solving complex problems excites you, this is the job for you!\u003c/p\u003e\n\u003cp\u003e\u003cstrong\u003eWe prioritize applicants that can work on-site at our Montreal studio for this contract opportunity.\u003c/strong\u003e\u003c/p\u003e",
+    "leverLists": [
+      {
+        "text": "In this role, you can expect to:",
+        "content": "\n\u003cli\u003eDesign and architect some of the most advanced modular gameplay systems that are robust, flexible, and high-performing.\u003c/li\u003e\n\u003cli\u003eTranslate requirements into technical designs and identify appropriate technologies, frameworks, and cloud infrastructure strategies.\u003c/li\u003e\n\u003cli\u003eEvaluate and select appropriate tools, libraries, and technologies to meet project goals.\u003c/li\u003e\n\u003cli\u003eEnsure scalability, performance, security, and maintainability in the software design and underlying server infrastructure.\u003c/li\u003e\n\u003cli\u003eCollaborate with cross-functional teams to gather requirements and define technical specifications.\u003c/li\u003e\n\u003cli\u003eFollow and advise on coding standards and best practices to ensure high-quality and maintainable code.\u003c/li\u003e\n\u003cli\u003eIterate on software based on feedback, testing, and performance analysis.\u003c/li\u003e\n\u003cli\u003eArchitect, provision, and manage cloud infrastructure (e.g., AWS, GCP) using Infrastructure as Code (IaC) to support scalable backend services.\u003c/li\u003e\n\u003cli\u003eDesign, implement, and maintain robust CI/CD pipelines to automate testing, deployment, and zero-downtime updates for game servers and APIs.\u003c/li\u003e\n\u003cli\u003eAnalyze and debug some of the most complex software and infrastructure issues, identifying root causes, and implementing effective solutions.\u003c/li\u003e\n\u003cli\u003eConduct thorough testing and verification to ensure the software meets functional and non-functional requirements.\u003c/li\u003e\n\u003cli\u003eInvestigate and resolve performance bottlenecks, optimize software for efficiency, and implement real-time monitoring and alerting systems (e.g., Datadog, Prometheus).\u003c/li\u003e\n\u003cli\u003eCollaborate with cross-functional teams, including product managers, designers, and other engineers, to understand requirements and deliver large-scale software solutions.\u003c/li\u003e\n\u003cli\u003eDocument software designs, code, infrastructure topology, and technical processes to facilitate understanding, maintainability, and future enhancements.\u003c/li\u003e\n\u003cli\u003eActively participate in code reviews and provide constructive feedback to improve the overall codebase quality.\u003c/li\u003e\n\u003cli\u003eImplement server-side logic, including APIs, databases, authentication systems, and data processing pipelines.\u003c/li\u003e\n"
+      },
+      {
+        "text": "To be successful in this role, your background includes:",
+        "content": "\n\u003cli\u003eBachelor's degree in Computer Science, Engineering, or equivalent experience.\u003c/li\u003e\n\u003cli\u003e8+ years of experience in software development, preferably in gaming.\u003c/li\u003e\n\u003cli\u003eStrong experience with JavaScript, TypeScript, or C#.\u003c/li\u003e\n\u003cli\u003eStrong understanding of software engineering with back-end/server-side technologies such as Node.js.\u003c/li\u003e\n\u003cli\u003eWorked on a RESTful API system.\u003c/li\u003e\n\u003cli\u003eStrong experience with cloud providers (AWS or GCP) and core services related to compute, networking, and managed\u0026nbsp;databases.\u003c/li\u003e\n\u003cli\u003eHands-on experience with containerization and orchestration tools (Docker, Kubernetes) for deploying and scaling game servers.\u003c/li\u003e\n\u003cli\u003eStrong experience using Non-Relational Databases such as MongoDB.\u003c/li\u003e\n\u003cli\u003eExperience with real-time multiplayer applications using Sockets or WebSocket.\u003c/li\u003e\n\u003cli\u003eExperience with Infrastructure as Code (IaC) tools like Terraform is a plus.\u003c/li\u003e\n\u003cli\u003eShipped multiple online titles (on Console, PC, or Mobile).\u003c/li\u003e\n\u003cli\u003eAbility to write clean, simple, well-documented code from design requirements.\u003c/li\u003e\n\u003cli\u003eProven track record of working independently and collaboratively in a dynamic team setting.\u003c/li\u003e\n\u003cli\u003eStrong experience working with source control such as GIT or Perforce.\u003c/li\u003e\n\u003cli\u003eExperience in Android / iOS Mobile application development.\u003c/li\u003e\n\u003cli\u003eProven track record of building and maintaining continuous integration and continuous deployment (CI/CD) pipelines\u0026nbsp;(e.g., GitHub Actions, GitLab CI, Jenkins).\u003c/li\u003e\n\u003cli\u003eUp-to-date knowledge of the latest mobile gaming trends.\u003c/li\u003e\n\u003cli\u003eAbility to effectively communicate with technical and non-technical team members.\u003c/li\u003e\n\u003cli\u003eExperience working in Agile, Kanban, or similar project management methodologies.\u003c/li\u003e\n\u003cli\u003eBilingual (French and English) is considered an important advantage.\u003c/li\u003e\n"
+      }
+    ]
+  },
+  "expectedSkills": [
+    {
+      "skillId": "typescript",
+      "required": true
+    },
+    {
+      "skillId": "csharp",
+      "required": true
+    },
+    {
+      "skillId": "aws",
+      "required": true
+    },
+    {
+      "skillId": "gcp",
+      "required": true
+    },
+    {
+      "skillId": "docker",
+      "required": true
+    },
+    {
+      "skillId": "kubernetes",
+      "required": true
+    },
+    {
+      "skillId": "terraform",
+      "required": true
+    },
+    {
+      "skillId": "git",
+      "required": true
+    },
+    {
+      "skillId": "perforce",
+      "required": true
+    },
+    {
+      "skillId": "github-actions",
+      "required": true
+    },
+    {
+      "skillId": "gitlab-ci",
+      "required": true
+    },
+    {
+      "skillId": "jenkins",
+      "required": true
+    },
+    {
+      "skillId": "agile",
+      "required": true
+    }
+  ]
+}

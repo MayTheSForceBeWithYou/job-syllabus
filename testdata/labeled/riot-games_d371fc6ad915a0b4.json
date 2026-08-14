@@ -1,0 +1,34 @@
+{
+  "postingId": "d371fc6ad915a0b4",
+  "title": "Cloud Infrastructure and Security Engineer (Contract)",
+  "company": "riot-games",
+  "rawPosting": {
+    "bodyHtml": "\u0026lt;p\u0026gt;We are seeking a highly skilled and motivated Cloud Infrastructure and Security Engineer to implement, operate and manage scalable, secure and resilient public cloud infrastructure. The ideal candidate will have experience with public cloud platforms (preferably Tencent Cloud), understanding of cloud-native security service and practice, and a passion for building infrastructure as code.\u0026lt;/p\u0026gt;\n\u0026lt;h2\u0026gt;Responsibilities:\u0026lt;/h2\u0026gt;\n\u0026lt;ul\u0026gt;\n\u0026lt;li\u0026gt;Manage daily operations of enterprise cloud platforms (Tencent Cloud) including resource provisioning, deployment, monitoring and incident resolution to ensure the stability of business systems;\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Deploy cloud-native infrastructure components, e.g. VPCs, subnets, routing, computing, storage and load balancing services\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Build and manage containerized environments e.g. Tencent TKE\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Enforce security best practices across public cloud environments including network segmentation, encryption, IAM and etc.\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Maintain access control policies under Tencent CAM and Group Account Management\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Ensure compliance with MLPS v2.0\u0026lt;/li\u0026gt;\n\u0026lt;/ul\u0026gt;\n\u0026lt;h2\u0026gt;Required Qualifications:\u0026lt;/h2\u0026gt;\n\u0026lt;ul\u0026gt;\n\u0026lt;li\u0026gt;Bachelor’s degree in Computer Science, Engineering or related field (or equivalent experience)\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;2+ years of experience in cloud infrastructure and/or security engineering roles\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Strong knowledge of Tencent Cloud platform and services\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Hands-on experience with VPC design, Network Protection, IAM\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Familiar with CI/CD pipelines and containers\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Knowledge of scripting languages, e.g. Python, Bash or PowerShell\u0026lt;/li\u0026gt;\n\u0026lt;/ul\u0026gt;\n\u0026lt;h2\u0026gt;Desired Qualifications:\u0026lt;/h2\u0026gt;\n\u0026lt;ul\u0026gt;\n\u0026lt;li\u0026gt;Cloud certifications (Tencent Cloud Certificate, AWS Certificate)\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Experience with MLPS v2.0\u0026lt;/li\u0026gt;\n\u0026lt;li\u0026gt;Knowledge of Terraform or similar Infrastructure as a Code tools\u0026lt;/li\u0026gt;\n\u0026lt;/ul\u0026gt;\n\u0026lt;p\u0026gt;Employment Type: employment contract with FESCO Adecco, a professional personnel company in China\u0026lt;/p\u0026gt;"
+  },
+  "expectedSkills": [
+    {
+      "skillId": "aws",
+      "required": false
+    },
+    {
+      "skillId": "bash",
+      "required": true
+    },
+    {
+      "skillId": "iam",
+      "required": true
+    },
+    {
+      "skillId": "powershell",
+      "required": true
+    },
+    {
+      "skillId": "python",
+      "required": true
+    },
+    {
+      "skillId": "terraform",
+      "required": false
+    }
+  ]
+}
