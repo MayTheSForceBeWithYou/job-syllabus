@@ -34,6 +34,15 @@ jenkins:
         credentialsId: "" # empty = use the controller's own IAM instance profile, no static keys
         cluster: "${ECS_CLUSTER_ARN}"
         regionName: "${AWS_REGION}"
+        # NOT the same as unclassified.location.url below (that's the
+        # global JenkinsLocationConfiguration) — the ECS cloud has its own
+        # jenkinsUrl field, used to build the JNLP agent's connect-back
+        # command (`-url <this>`). Left unset, that command element is
+        # null, and ECS's RunTask rejects the whole override outright:
+        # "InvalidParameterException: Override argument cannot be null."
+        # Confirmed against a real boot — every agent launch failed this
+        # way regardless of agentContainerName being correctly set.
+        jenkinsUrl: "https://jenkins.job-syllabus.skopekreep.com/"
         templates:
           - templateName: "fargate-agent"
             label: "fargate-agent"
