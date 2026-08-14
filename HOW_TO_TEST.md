@@ -1,10 +1,10 @@
 # How to test what's built so far
 
-This covers what actually works today (`9c0dd83`). It'll grow as more of
+This covers what actually works today (`ea09ef6`). It'll grow as more of
 `docs/design.md` gets implemented — check the date/commit below against
 `git log` if it's been a while.
 
-**Last updated:** 2026-08-13, commit `9c0dd83`
+**Last updated:** 2026-08-13, commit `ea09ef6` — Phase 0/1 DoD met.
 
 ## Prerequisites
 
@@ -26,8 +26,9 @@ changed between v1 and v2, so an older install won't read `.golangci.yml`
 correctly).
 
 `make test` currently only exercises `internal/extract` (heading
-classification + full segmentation, both the HTML and Lever-`lists`
-paths). Everything else has no unit tests yet — `internal/connectors`,
+classification, both segmentation paths, and dictionary matching —
+case-sensitivity handling, required-wins-over-nice_to_have, evidence
+truncation). Everything else has no unit tests yet — `internal/connectors`,
 `internal/store`, etc. are only exercised by the live run below.
 
 ## 2. Bring up DynamoDB Local
@@ -55,22 +56,27 @@ no mocking, no fixtures. Expect structured log output like:
 ```
 time=... level=INFO msg="company starting" index=1 of=5 company=epic-games ats=greenhouse
 time=... level=INFO msg="greenhouse: fetching" company=epic-games url="https://boards-api.greenhouse.io/..."
-time=... level=INFO msg="greenhouse: fetch complete" company=epic-games jobs=159 elapsed=267ms
-time=... level=INFO msg="company complete" company=epic-games fetched=159 roleMatched=9 new=9 updated=0
+time=... level=INFO msg="greenhouse: fetch complete" company=epic-games jobs=161 elapsed=223ms
+time=... level=INFO msg="company complete" company=epic-games fetched=161 roleMatched=9 new=9 updated=0 skillEdges=37
 ...
-time=... level=INFO msg="ingest run complete" companies=5 skipped=0 fetched=616 roleMatched=71 new=71 updated=0
+time=... level=INFO msg="ingest run complete" companies=5 skipped=0 fetched=617 roleMatched=70 new=70 updated=0 skillEdges=169
 ```
 
 A rerun should show `new=0` and `updated=` some number, since postings get
 upserted, not duplicated. A company timing out or failing shows up as an
 `ERROR` line with elapsed time and the underlying error — it gets skipped,
-not fatal to the whole run.
+not fatal to the whole run. **Watch `skillEdges` per company** — a company
+stuck at 0 while others aren't is the signal that its postings use section
+headings the dictionary matcher isn't recognizing (this is exactly how the
+Epic Games heading bug was found; see PROGRESS.md). `kabam` legitimately
+stays at 0 — that's an accepted, documented gap (NEXT_STEPS.md), not a bug.
 
 **Env var overrides** (all optional):
 | Var | Default | Purpose |
 |---|---|---|
 | `DYNAMODB_ENDPOINT` | `http://localhost:8000` | Where to find DynamoDB Local |
 | `COMPANIES_FILE` | `data/companies.yaml` | Company registry to ingest |
+| `SKILLS_FILE` | `data/skills.yaml` | Skill dictionary for extraction and report |
 | `INGEST_TIMEOUT` | `900` (15m, in seconds) | Overall run deadline |
 | `COMPANY_TIMEOUT` | `20` (seconds) | Per-company fetch deadline before skip |
 
@@ -80,24 +86,26 @@ not fatal to the whole run.
 make report   # go run ./cmd/ingest report
 ```
 
-**This is interim, not the real deliverable.** It prints posting counts
-per company:
+**This is the real deliverable** — the ranked skill-frequency table,
+computed fresh from every stored `PostingSkill` edge each run:
 
 ```
-=== Posting counts by company (interim — skill ranking pending extraction pipeline) ===
-riot-games               26
-roblox                   24
-epic-games                9
-discord                   7
-kabam                     5
+=== Skill frequency across 70 postings (5 companies) ===
+SKILL                        CATEGORY        COUNT % OF POSTS  REQ'D NICE-TO-HAVE
+Amazon Web Services (AWS)    cloud              12      17.1%      9            3
+Kubernetes                   containers         11      15.7%      8            3
+Google Cloud Platform (GCP)  cloud              10      14.3%      8            2
+C++                          languages           9      12.9%      8            1
+...
 
-total postings: 71 across 5 companies
+41 distinct skills matched across 70 postings
 ```
 
-The actual DoD (ranked skill-frequency table) needs Stage 3 (dictionary
-matching against `data/skills.yaml`), which isn't built yet — see
-NEXT_STEPS.md. Once it lands, this section gets rewritten to show what
-`make report` actually prints.
+Numbers will drift run to run as real postings open/close — this is a live
+snapshot of the job market, not a fixture. If `report` shows 0 skills
+entirely, check `ingest`'s log for `skillEdges` — that means extraction
+found nothing anywhere, which would be a real regression (every company
+except the accepted `kabam` gap should contribute something).
 
 ## 5. Inspecting DynamoDB Local directly (optional, for debugging)
 

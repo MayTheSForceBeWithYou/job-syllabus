@@ -1,7 +1,7 @@
 # Progress
 
 **Last updated:** 2026-08-13
-**Commit:** `9c0dd83` ("Implement extraction Stage 1 (normalize) + Stage 2 (segment)")
+**Commit:** `ea09ef6` ("Implement Stage 3 (dictionary matching); DoD met end to end")
 **Branch:** `main`, matches `origin/main`
 
 This supersedes the earlier Cursor-generated audit in this file, which was
@@ -13,8 +13,32 @@ is the only source of truth.
 
 Scope for this session, per the operator's explicit instruction: Phase 0
 (scaffold) and Phase 1 (local vertical slice) combined, targeting the DoD in
-`docs/design.md` §17 — `make ingest && make report` prints a ranked
-skill-frequency table from real postings across ≥5 companies.
+`docs/design.md` §17.
+
+## DoD: met
+
+> `make ingest && make report` prints a ranked table from real postings for
+> at least 5 companies.
+
+```
+$ make ingest && make report
+...
+=== Skill frequency across 70 postings (5 companies) ===
+SKILL                        CATEGORY        COUNT % OF POSTS  REQ'D NICE-TO-HAVE
+Amazon Web Services (AWS)    cloud              12      17.1%      9            3
+Kubernetes                   containers         11      15.7%      8            3
+Google Cloud Platform (GCP)  cloud              10      14.3%      8            2
+C++                          languages           9      12.9%      8            1
+Go                           languages           8      11.4%      7            1
+Python                       languages           8      11.4%      7            1
+Terraform                    cloud               8      11.4%      3            5
+...
+41 distinct skills matched across 70 postings
+```
+
+Real postings from Epic Games, Riot Games, Discord, Roblox (Greenhouse) and
+Kabam (Lever) — no mocking, no fixtures. Full pipeline: fetch → role-filter →
+dedupe → normalize → segment → dictionary-match → store → rank.
 
 ---
 
@@ -35,8 +59,16 @@ skill-frequency table from real postings across ≥5 companies.
 **Data model & store** (`internal/model`, `internal/store`)
 - Single-table item shapes from §4: `Posting`, `PostingSkill`, `Skill`.
 - DynamoDB Local client with `EnsureTable` (idempotent create + 2 GSIs).
-- Explicit HTTP client timeout on the AWS SDK client (10s) — see the hang
-  postmortem below.
+- `UpsertPosting` returns the final stored posting (not just created/err)
+  so callers can layer extraction results on top of the correct
+  FirstSeenAt/etc. rather than their pre-upsert draft.
+- `PutSkillEdge` / `ListAllSkillEdges` for Posting→Skill edges — a plain
+  idempotent PutItem + Scan, not the write-time `TransactWriteItems`
+  counter mechanism §4 describes. Deliberate Phase 1 simplification: that
+  mechanism exists to survive an at-least-once queue consumer
+  double-processing a posting, which doesn't exist yet (no SQS, single
+  process, no concurrent writers). `report` recomputes counts from source
+  of truth every run instead — simpler, and nothing to drift.
 
 **Connectors** (`internal/connectors`)
 - `Connector` interface, `GreenhouseConnector`, `LeverConnector` against
@@ -45,46 +77,53 @@ skill-frequency table from real postings across ≥5 companies.
   sub-timeouts on top of a 15s overall `Client.Timeout`.
 - `FetchWithRetry`: up to 2 retries with exponential backoff, `slog`
   WARN/ERROR logging with elapsed time.
-- `internal/config`: loads and validates `data/companies.yaml` (unique
-  slug, known tier, registered ATS, non-empty roleFilters) at load time.
+- `internal/config`: loads/validates `data/companies.yaml` and (new)
+  `data/skills.yaml` at load time — fail fast, not per-item at use time.
 - `internal/dedupe`: URL canonicalization + sha256-derived PostingID/
   ContentHash per §5.
 
 **Ingest CLI** (`cmd/ingest`)
-- `ingest` subcommand: loads `data/companies.yaml`, fetches via connector,
-  client-side role-filters, canonicalizes + dedupes, upserts to DynamoDB
-  Local. `slog` structured logging throughout (company start/complete,
-  fetch timing, retries, skips). Overall run deadline (`INGEST_TIMEOUT`,
-  default 15m) and per-company deadline (`COMPANY_TIMEOUT`, default 20s).
-- `report` subcommand: **interim only** — prints posting counts per
-  company. The real DoD deliverable (ranked skill table) needs Stage 3
-  (dictionary matching), not built yet.
-- **Verified against real data:** `make ingest` against all 5 seed
-  companies completes in ~8s, 616 postings fetched, 71 role-matched and
-  stored (epic-games 9, riot-games 26, discord 7, roblox 24, kabam 5).
+- `ingest`: loads companies + skills, fetches via connector, client-side
+  role-filters, canonicalizes + dedupes, upserts to DynamoDB Local, then
+  runs Stages 1-3 on the posting immediately and writes the resulting
+  skill edges. `slog` structured logging throughout. Overall run deadline
+  (`INGEST_TIMEOUT`, default 15m) and per-company deadline
+  (`COMPANY_TIMEOUT`, default 20s).
+- `report`: prints the real ranked skill-frequency table — count, % of
+  postings, required vs. nice-to-have split, sorted by count.
+- **Verified against real data** (see DoD output above): 617 postings
+  fetched, 70 role-matched and stored, 169 skill edges written, 41
+  distinct skills ranked.
 
-**Extraction Stage 1 + 2** (`internal/extract`)
+**Extraction pipeline** (`internal/extract`) — Stages 1-3 of 5
 - Stage 1 (Normalize): `htmlToLines` via goquery — strips
   nav/footer/script/style, flattens to `"## heading"` / `"- item"` lines.
+  Unescapes HTML entities first (see postmortem below).
 - Stage 2 (Segment): splits on heading markers, classifies each heading
   against ordered cue lists (nice_to_have checked before requirements),
-  applies the benefits cutoff (first benefits section + everything after
-  it → boilerplate).
-- Lever's structured `lists` are used directly, bypassing HTML, per §5/§6.
-- Unit tests cover classification and both the HTML and Lever-lists paths.
-- **Verified against live postings**, which surfaced and fixed two real
-  bugs (see postmortems below) plus one open question (see Next Steps).
+  applies the benefits cutoff. Lever's structured `lists` are used
+  directly, bypassing HTML, per §5/§6.
+- Stage 3 (Dictionary match): `CompileSkills` builds a case-insensitive
+  `\bAlias\b` regex per alias, or uses author-supplied `patterns` verbatim
+  for tokens `\b` handles badly (C++, C#, .NET) or where case matters (Go
+  vs. "go"). `MatchSkills` scans requirements/nice_to_have sections only;
+  a skill matched in both gets Required=true, not overwritten.
+- Stage 4 (Bedrock fallback) and Stage 5 (review queue): not built.
+- `data/skills.yaml`: ~90 skills seeded across the §6 taxonomy (not the
+  250-400 month-3 target). `meta` category (years of experience, degree,
+  shipped-title) deliberately not seeded — needs separate structured-fact
+  extraction, not dictionary matching.
+- Unit tests cover classification, both HTML/Lever-lists segmentation
+  paths, and dictionary matching (case-sensitivity, required-wins,
+  evidence truncation, requirements-sections-only scope).
 
 ## Not built yet
 
-- Stage 3 (dictionary matching), `data/skills.yaml`, Stage 4 (Bedrock
-  fallback), Stage 5 (review queue) — none implemented. This is what
-  turns the interim posting-count report into the actual ranked
-  skill-frequency table.
+- Stage 4 (Bedrock fallback), Stage 5 (review queue).
 - `testdata/labeled/*.json` hand-labeled validation set + the 90%-precision
   test gate from §6 — not started.
-- `docs/phase-0.md` / `docs/phase-1.md` writeups (§0.6 requires these at
-  the end of every phase — pending until Stage 3 lands and the DoD passes).
+- `docs/phase-0.md` / `docs/phase-1.md` writeups (§0.6 requires these —
+  next up now that the DoD passes).
 - Everything explicitly out of scope this session: Terraform, Jenkins, auth,
   Expo/mobile client.
 
@@ -103,18 +142,28 @@ volume-backed `-dbPath`. Separately hardened the whole path (explicit
 sub-timeouts, per-company deadlines, bounded retry, structured logging) so
 this class of failure surfaces in seconds next time, whatever causes it.
 
-**Two bugs only found by testing against live postings, not synthetic
-fixtures:**
+**Three bugs only found by testing against live postings, not synthetic
+fixtures — each caught during the actual session, not after:**
 1. The benefits-cutoff logic force-classified sections *after* the first
    benefits section to boilerplate, but left the benefits section itself
    classified as `benefits` — a unit test encoding the reviewed design
    caught this immediately.
 2. Greenhouse's `content` field comes back HTML-entity-double-escaped
    (literal `&lt;p&gt;` instead of `<p>`), so the HTML parser saw one giant
-   text node with zero real tags and silently returned nothing. This only
-   surfaced by running against a real Riot Games posting — every synthetic
-   test fixture used plain HTML and passed regardless. Fixed with
+   text node with zero real tags and silently returned nothing. Only
+   surfaced by running against a real Riot Games posting. Fixed with
    `html.UnescapeString` before parsing.
+3. Epic Games — one of the 5 seed companies — uses "What we're looking
+   for" as its requirements heading, which matched no cue at all. Every
+   single Epic posting contributed zero skills until the first full
+   `make ingest` run showed `skillEdges=0` for that company specifically
+   (all others were non-zero), which is what triggered the investigation.
+   Unlike the already-accepted Kabam heading gap (see NEXT_STEPS.md), this
+   was one well-defined phrase from a major seed company, not open-ended
+   arbitrary phrasing, so it was fixed directly.
 
-Both are a concrete argument for the "test against real postings, not just
-synthetic fixtures" approach this session has been using at each checkpoint.
+All three are a concrete argument for "test against real postings, check
+the actual numbers, not just that the code runs without error" — bug #3 in
+particular would have silently produced a DoD-passing report with a whole
+seed company's data missing if the per-company log output hadn't been
+checked line by line.
