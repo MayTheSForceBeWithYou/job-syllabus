@@ -22,3 +22,7 @@ output "queue_urls" {
 output "alerts_topic_arn" {
   value = module.observability.alerts_topic_arn
 }
+
+output "api_url" {
+  value = module.api_gateway.api_url
+}

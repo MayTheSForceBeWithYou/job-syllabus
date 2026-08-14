@@ -51,8 +51,15 @@ jenkins:
             # names caused a real JCasC boot failure (UnknownAttributesException)
             # against a live Phase 2 apply; confirmed against the plugin's own
             # reported "Available attributes" list at boot time.
+            #
+            # executionRole (image pull + logs only) and taskrole (what the
+            # running agent can actually call — PowerUserAccess-equivalent,
+            # since agents run infra-apply/api-build) are deliberately
+            # different roles as of Phase 3 — see modules/jenkins/iam.tf's
+            # jenkins_agent role for why reusing the execution role here was
+            # a Phase 2 placeholder, not the real design.
             executionRole: "${TASK_EXECUTION_ROLE_ARN}"
-            taskrole: "${TASK_EXECUTION_ROLE_ARN}" # tightened to a dedicated least-privilege agent task role in a later phase
+            taskrole: "${AGENT_TASK_ROLE_ARN}"
             remoteFSRoot: "/home/jenkins"
             uniqueRemoteFSRoot: true
 

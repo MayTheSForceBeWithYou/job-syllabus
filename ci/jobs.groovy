@@ -30,7 +30,14 @@ pipelineJob('api-build') {
         }
     }
     triggers {
-        githubPush()
+        // pollSCM, not githubPush(): GitHub's webhook servers can't reach
+        // this Jenkins (ALB IP-locked to the operator only, §10) — see
+        // ci/Jenkinsfile.api-build's comment for the full rationale. Set
+        // here too, not just in the Jenkinsfile's own triggers{} block,
+        // since this is what actually schedules the *first* build (a
+        // declarative Jenkinsfile's triggers{} only takes over syncing
+        // the job config starting from the second run).
+        scm('H/5 * * * *')
     }
 }
 
@@ -48,7 +55,14 @@ pipelineJob('infra-plan') {
         }
     }
     triggers {
-        githubPush()
+        // pollSCM, not githubPush(): GitHub's webhook servers can't reach
+        // this Jenkins (ALB IP-locked to the operator only, §10) — see
+        // ci/Jenkinsfile.api-build's comment for the full rationale. Set
+        // here too, not just in the Jenkinsfile's own triggers{} block,
+        // since this is what actually schedules the *first* build (a
+        // declarative Jenkinsfile's triggers{} only takes over syncing
+        // the job config starting from the second run).
+        scm('H/5 * * * *')
     }
 }
 

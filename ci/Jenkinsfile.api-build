@@ -4,9 +4,15 @@
 //   (fail on HIGH+) -> ECR push tagged $GIT_SHA -> ecs update-service
 //   -> poll stability -> smoke test /healthz
 //
-// Deploy + smoke-test stages are defined but disabled (`when { expression
-// { false } }`) until Phase 3 creates the service-api ECS service — there's
-// nothing to deploy to yet. Flip them on then, don't recreate this file.
+// Deploy + smoke-test are live as of Phase 3 (service-api exists now).
+//
+// pollSCM, not githubPush(): a GitHub webhook can't reach this Jenkins —
+// its ALB is IP-locked to the operator only (docs/design.md §10, "never
+// expose Jenkins to the open internet"), so GitHub's webhook servers get
+// nothing back. Jenkins polling GitHub itself needs no inbound
+// connectivity at all and still gets a build running within minutes of a
+// push, which is what "deployed... from a git push" (§13 Phase 3 DoD)
+// actually requires.
 pipeline {
     agent { label 'fargate-agent' }
 
@@ -16,13 +22,16 @@ pipeline {
     }
 
     triggers {
-        githubPush()
+        pollSCM('H/5 * * * *')
     }
 
     environment {
-        AWS_REGION = 'us-west-1'
-        ECR_REPO   = '881811711506.dkr.ecr.us-west-1.amazonaws.com/job-syllabus/api'
-        IMAGE_TAG  = "${env.GIT_COMMIT}"
+        AWS_REGION      = 'us-west-1'
+        ECR_REPO        = '881811711506.dkr.ecr.us-west-1.amazonaws.com/job-syllabus/api'
+        IMAGE_TAG       = "${env.GIT_COMMIT}"
+        ECS_CLUSTER     = 'job-syllabus'
+        ECS_SERVICE     = 'api'
+        TASK_DEF_FAMILY = 'job-syllabus-api'
     }
 
     stages {
@@ -55,18 +64,54 @@ pipeline {
             }
         }
         stage('Deploy') {
-            when { expression { return false } } // Phase 3: enable once service-api exists
             steps {
+                // Terraform (modules/service-api) owns the task definition's
+                // *shape* (cpu/memory/roles/log config) and deliberately
+                // ignore_changes on container_definitions/task_definition
+                // so it doesn't fight this — every real deploy after the
+                // first comes from here: describe the current (Terraform- or
+                // previously-Jenkins-registered) revision, swap only the
+                // image, register a new revision, point the service at it.
+                // Plain `--force-new-deployment` on its own would restart
+                // the service on the SAME image tag it already had, not
+                // this build's — that was the original Phase 2 stub's bug.
                 sh '''
-                  aws ecs update-service --cluster job-syllabus --service api --force-new-deployment --region "$AWS_REGION"
-                  aws ecs wait services-stable --cluster job-syllabus --services api --region "$AWS_REGION"
+                  aws ecs describe-task-definition --task-definition "$TASK_DEF_FAMILY" --region "$AWS_REGION" \
+                    --query 'taskDefinition' > current-task-def.json
+
+                  # describe-task-definition's output has several read-only
+                  # fields register-task-definition's --cli-input-json
+                  # rejects outright ("Unknown parameter") — strip all of
+                  # them, not just the ones likely to be present.
+                  jq --arg IMAGE "$ECR_REPO:$IMAGE_TAG" \
+                    '.containerDefinitions[0].image = $IMAGE
+                     | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                           .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
+                    current-task-def.json > new-task-def.json
+
+                  NEW_REVISION_ARN=$(aws ecs register-task-definition --region "$AWS_REGION" \
+                    --cli-input-json file://new-task-def.json \
+                    --query 'taskDefinition.taskDefinitionArn' --output text)
+
+                  echo "Registered $NEW_REVISION_ARN"
+
+                  aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
+                    --task-definition "$NEW_REVISION_ARN" --region "$AWS_REGION"
+                  aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --region "$AWS_REGION"
                 '''
             }
         }
         stage('Smoke test') {
-            when { expression { return false } } // Phase 3: enable once the API has a real URL
             steps {
-                sh 'curl -fsS https://api.job-syllabus.skopekreep.com/healthz'
+                // The API's URL is Terraform-published to SSM (modules/
+                // api-gateway), not hardcoded here — it's a real
+                // apply-specific value (the API Gateway default endpoint),
+                // same "SSM as the source of dynamic values" pattern the
+                // Jenkins admin password already uses.
+                sh '''
+                  API_URL=$(aws ssm get-parameter --name /job-syllabus/api/url --region "$AWS_REGION" --query Parameter.Value --output text)
+                  curl -fsS "$API_URL/healthz"
+                '''
             }
         }
     }

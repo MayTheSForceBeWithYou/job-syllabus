@@ -94,6 +94,42 @@ resource "aws_iam_instance_profile" "jenkins" {
   role = aws_iam_role.jenkins.name
 }
 
+# --- Jenkins Fargate BUILD AGENTS (not the controller) - Task Role for the
+# ephemeral agents the Amazon ECS plugin launches (§10). numExecutors: 0
+# on the controller means ALL pipeline work - including infra-plan/
+# infra-apply's own `terraform apply` - runs on these agents, so they need
+# real permissions, not just the execution role's ECR-pull+CloudWatch-Logs
+# scope. Phase 2 pointed JCasC's taskrole at the execution role as a
+# placeholder ("tightened... in a later phase" per ci/jenkins.yaml's
+# original comment); Phase 3's api-build Deploy stage (ECR push, ECS
+# register-task-definition/update-service) is what makes that gap load-
+# bearing, so it's fixed here rather than deferred again. Same permission
+# set as the controller's own role, since agents now do the same class of
+# work the controller was originally scoped for. ---
+
+resource "aws_iam_role" "jenkins_agent" {
+  name = "${var.project}-jenkins-agent"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "jenkins_agent_power_user" {
+  role       = aws_iam_role.jenkins_agent.name
+  policy_arn = "arn:aws:iam::aws:policy/PowerUserAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "jenkins_agent_iam_scoped" {
+  role       = aws_iam_role.jenkins_agent.name
+  policy_arn = aws_iam_policy.jenkins_iam_scoped.arn
+}
+
 # --- DLM (Data Lifecycle Manager): daily JENKINS_HOME snapshots ---
 
 data "aws_iam_policy_document" "dlm_assume" {

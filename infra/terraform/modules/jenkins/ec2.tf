@@ -34,6 +34,7 @@ resource "aws_instance" "jenkins" {
     fargate_subnet_ids      = join(",", var.public_subnet_ids)
     fargate_sg_id           = var.fargate_sg_id
     task_execution_role_arn = var.task_execution_role_arn
+    agent_task_role_arn     = aws_iam_role.jenkins_agent.arn
   })
   user_data_replace_on_change = true
 

@@ -3,6 +3,11 @@ variable "jenkins_allowed_cidr" {
   type        = string
 }
 
+variable "api_allowed_cidr" {
+  description = "docs/design.md §13 Phase 3 DoD: no auth yet, locked to the operator's IP via WAF. Kept distinct from jenkins_allowed_cidr (usually the same value) so the API's access can be widened independently of Jenkins later."
+  type        = string
+}
+
 variable "alert_email" {
   type = string
 }

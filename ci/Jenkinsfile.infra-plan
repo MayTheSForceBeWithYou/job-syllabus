@@ -3,6 +3,10 @@
 //
 // Push-triggered rather than true PR-discovery for now — see ci/jobs.groovy
 // for why (needs GitHub credentials this seed doesn't have yet).
+//
+// pollSCM, not githubPush(): GitHub's webhook servers can't reach this
+// Jenkins (its ALB is IP-locked to the operator only, §10) — see
+// ci/Jenkinsfile.api-build's comment for the full rationale.
 pipeline {
     agent { label 'fargate-agent' }
 
@@ -12,7 +16,7 @@ pipeline {
     }
 
     triggers {
-        githubPush()
+        pollSCM('H/5 * * * *')
     }
 
     stages {

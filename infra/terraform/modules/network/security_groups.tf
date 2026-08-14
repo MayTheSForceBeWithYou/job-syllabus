@@ -58,9 +58,8 @@ resource "aws_security_group" "jenkins_ec2" {
   tags = { Name = "${var.project}-jenkins-ec2" }
 }
 
-# --- Fargate (Phase 3+): public-subnet, closed to inbound per §9 option 3.
-# Not used by anything in Phase 2 - service-api/service-worker come later -
-# defined here so this module doesn't need revisiting when they land. ---
+# --- Fargate: public-subnet, closed to inbound per §9 option 3. Used by
+# Jenkins's ephemeral build agents (Phase 2). ---
 
 resource "aws_security_group" "fargate" {
   name        = "${var.project}-fargate"
@@ -75,4 +74,72 @@ resource "aws_security_group" "fargate" {
   }
 
   tags = { Name = "${var.project}-fargate" }
+}
+
+# --- service-api (Phase 3): API Gateway -> VPC Link -> internal ALB ->
+# Fargate. Each hop's SG only accepts traffic from the previous hop's SG -
+# no CIDR-based rules, since none of this is meant to be reachable from
+# outside the VPC at all (IP-restriction for the whole API happens one
+# layer up, at the WAF attached to the API Gateway stage - see
+# modules/api-gateway). ---
+
+resource "aws_security_group" "vpc_link" {
+  name        = "${var.project}-vpc-link"
+  description = "API Gateway VPC Link ENIs - egress only, to the internal ALB"
+  vpc_id      = aws_vpc.main.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${var.project}-vpc-link" }
+}
+
+resource "aws_security_group" "api_alb" {
+  name        = "${var.project}-api-alb"
+  description = "Internal ALB for service-api - inbound only from the VPC Link"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "HTTP from the API Gateway VPC Link only"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.vpc_link.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${var.project}-api-alb" }
+}
+
+resource "aws_security_group" "service_api" {
+  name        = "${var.project}-service-api"
+  description = "service-api ECS tasks - inbound only from the internal ALB"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "API traffic from the internal ALB only"
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    security_groups = [aws_security_group.api_alb.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${var.project}-service-api" }
 }
