@@ -36,6 +36,18 @@ resource "aws_security_group" "jenkins_ec2" {
     security_groups = [aws_security_group.jenkins_alb.id]
   }
 
+  # EC2 Instance Connect (browser-based SSH from the AWS console) proxies
+  # through a per-region AWS-owned IP range, not the operator's own IP -
+  # https://ip-ranges.amazonaws.com, service EC2_INSTANCE_CONNECT,
+  # us-west-1 = 13.52.6.112/29. Scoped to that /29, not 0.0.0.0/0.
+  ingress {
+    description = "SSH from the EC2 Instance Connect service range (us-west-1) only"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["13.52.6.112/29"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0

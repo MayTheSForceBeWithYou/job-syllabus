@@ -14,7 +14,16 @@ done
 
 # A blank volume (no prior snapshot) has no filesystem yet; a
 # snapshot-restored one already does and must NOT be reformatted.
-FSTYPE=$(file -s "$DEVICE" | awk '{print $2}')
+#
+# `-L` is load-bearing: on Nitro instances (t4g included), /dev/xvdf is a
+# udev symlink to the real device (/dev/nvme1n1 here, though the exact
+# nvme number isn't fixed). `file -s` without `-L` reports "symbolic
+# link to ..." for the link itself instead of inspecting what it points
+# to, so FSTYPE never equals "data" even on a genuinely blank volume, the
+# mkfs step gets skipped, and mount fails on the unformatted raw device.
+# Confirmed against a real Phase 2 apply — the first Jenkins boot with
+# this bug produced exactly that mount failure.
+FSTYPE=$(file -sL "$DEVICE" | awk '{print $2}')
 if [ "$FSTYPE" = "data" ]; then
   mkfs -t xfs "$DEVICE"
 fi
@@ -25,13 +34,26 @@ echo "$DEVICE $MOUNT_POINT xfs defaults,nofail 0 2" >> /etc/fstab
 
 dnf install -y java-21-amazon-corretto git awscli
 
+# Fetched live from https://pkg.jenkins.io/rpm-stable/jenkins.repo (the
+# project's own current canonical repo file) rather than hand-copied,
+# after a real Phase 2 boot failed "GPG check FAILED" with the previous
+# hand-copied redhat-stable/jenkins.io-2023.key config: Jenkins has since
+# moved the RPM repo from redhat-stable to rpm-stable and switched to
+# signing repo metadata (repodata/repomd.xml.key) rather than publishing
+# a standalone package-signing key, so the old URL and key were both
+# stale. repo_gpgcheck=1 (not just gpgcheck=1) is required for dnf to
+# actually validate against the metadata signature.
 cat > /etc/yum.repos.d/jenkins.repo <<'REPO'
 [jenkins]
 name=Jenkins-stable
-baseurl=https://pkg.jenkins.io/redhat-stable
+enabled=1
+type=rpm-md
+baseurl=https://pkg.jenkins.io/rpm-stable
+gpgkey=https://pkg.jenkins.io/rpm-stable/repodata/repomd.xml.key
 gpgcheck=1
+repo_gpgcheck=1
 REPO
-rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+rpm --import https://pkg.jenkins.io/rpm-stable/repodata/repomd.xml.key
 dnf install -y jenkins
 
 # The jenkins package creates /var/lib/jenkins owned by jenkins:jenkins

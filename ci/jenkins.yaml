@@ -46,8 +46,13 @@ jenkins:
             assignPublicIp: true
             subnets: "${FARGATE_SUBNET_IDS}"
             securityGroups: "${FARGATE_SG_ID}"
-            executionRoleArn: "${TASK_EXECUTION_ROLE_ARN}"
-            taskRoleArn: "${TASK_EXECUTION_ROLE_ARN}" # tightened to a dedicated least-privilege agent task role in a later phase
+            # Field names are executionRole/taskrole (not *Arn) in the
+            # amazon-ecs plugin's actual ECSTaskTemplate schema — the *Arn
+            # names caused a real JCasC boot failure (UnknownAttributesException)
+            # against a live Phase 2 apply; confirmed against the plugin's own
+            # reported "Available attributes" list at boot time.
+            executionRole: "${TASK_EXECUTION_ROLE_ARN}"
+            taskrole: "${TASK_EXECUTION_ROLE_ARN}" # tightened to a dedicated least-privilege agent task role in a later phase
             remoteFSRoot: "/home/jenkins"
             uniqueRemoteFSRoot: true
 
