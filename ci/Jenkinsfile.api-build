@@ -52,9 +52,22 @@ pipeline {
         }
         stage('Build image') {
             steps {
+                // Kaniko, not `docker buildx build`: this agent has no
+                // Docker daemon at all (§10, no privileged DinD on
+                // Fargate) — confirmed against a real CI run, which
+                // failed outright trying to reach
+                // unix:///var/run/docker.sock. Kaniko builds and pushes
+                // in userspace with no daemon involved; auth is a plain
+                // docker-config.json written by hand (no `docker login`
+                // client to run either) using the same ECR password
+                // every other stage already fetches via the AWS CLI.
                 sh '''
-                  aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REPO"
-                  docker buildx build --build-arg BINARY=api -t "$ECR_REPO:$IMAGE_TAG" --push .
+                  mkdir -p /kaniko/.docker
+                  ECR_HOST="${ECR_REPO%%/*}"
+                  AUTH=$(printf "AWS:%s" "$(aws ecr get-login-password --region "$AWS_REGION")" | base64 -w0)
+                  printf '{"auths":{"%s":{"auth":"%s"}}}' "$ECR_HOST" "$AUTH" > /kaniko/.docker/config.json
+                  /kaniko/executor --dockerfile=Dockerfile --context="dir://$(pwd)" \
+                    --destination="$ECR_REPO:$IMAGE_TAG" --build-arg=BINARY=api --cache=false
                 '''
             }
         }

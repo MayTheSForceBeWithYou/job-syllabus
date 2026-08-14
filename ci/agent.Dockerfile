@@ -4,12 +4,19 @@
 # JNLP/WebSocket protocol out of the box; everything below is the tooling
 # api-build/infra-plan/infra-apply/client-build actually need.
 #
-# Docker-in-Docker on Fargate is painful (§10) — this installs the Docker
-# CLI + buildx only, for use against a remote BuildKit builder, not a local
-# privileged daemon.
+# Docker-in-Docker on Fargate is painful (§10). `docker buildx build`
+# needs a real daemon to talk to — confirmed against a real CI run
+# ("failed to connect to the docker API at unix:///var/run/docker.sock:
+# ... no such file or directory"), since this container deliberately runs
+# without one. Kaniko instead: it builds images in userspace with no
+# daemon at all, exactly the alternative §10 names.
+FROM gcr.io/kaniko-project/executor:latest AS kaniko
+
 FROM jenkins/inbound-agent:latest-jdk21
 
 USER root
+
+COPY --from=kaniko /kaniko/executor /kaniko/executor
 
 # Matches go.mod's declared version (and the local dev toolchain) — a
 # mismatch here is what made golangci-lint auto-fetch an intermediate
@@ -40,12 +47,6 @@ RUN go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg lsb-release unzip jq \
-    && install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" \
-        > /etc/apt/sources.list.d/docker.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends docker-ce-cli docker-buildx-plugin \
     && rm -rf /var/lib/apt/lists/*
 
 ARG TERRAFORM_VERSION=1.9.8
