@@ -84,19 +84,42 @@ pipeline {
                   # Dockerfile only has 2 RUN/COPY pairs, so most of that
                   # per-instruction snapshotting was pure overhead.
                   #
-                  # --ignore-path=/home/jenkins is load-bearing: our
-                  # Dockerfile is multi-stage (build -> distroless), and
-                  # Kaniko resets the filesystem between stages by
-                  # deleting everything not explicitly protected —
-                  # confirmed against a real run that got much further
-                  # than ever before (past the whole build stage, into
-                  # "Deleting filesystem...") and STILL killed the agent
-                  # connection right there, because /home/jenkins (the
-                  # JNLP process's own workspace and jar cache) isn't in
-                  # Kaniko's own default ignore list.
+                  # --ignore-path=/home/jenkins protects the JNLP agent's
+                  # own workspace/jar cache from Kaniko's between-stage
+                  # filesystem wipe — without it, a real run confirmed
+                  # Kaniko deletes it along with everything else not
+                  # explicitly protected. That alone wasn't sufficient,
+                  # though: a further real run got all the way through the
+                  # build AND the push (confirmed via a real digest landing
+                  # in ECR) but then hung for ~8 minutes before Jenkins
+                  # declared the durable-task wrapper unresponsive and
+                  # failed the build anyway. Root cause: the wrapper's own
+                  # post-completion bookkeeping (reporting the exit code
+                  # back to Jenkins) needs external binaries like `mv`/`sh`
+                  # under /bin, /usr, /lib, /etc — all deleted by the same
+                  # filesystem wipe. Those are protected here too. This is
+                  # safe against the built image containing stray Debian
+                  # cruft from the ignored paths: --ignore-path excludes a
+                  # path from Kaniko's snapshot diff entirely (its
+                  # documented purpose — keeping a live CI process's own
+                  # files out of the image being built), not just from
+                  # deletion, so nothing under these paths — ours or the
+                  # base image's leftovers — ends up in the pushed layers.
+                  # That's also why the Dockerfile places the built binary
+                  # at /app/bin rather than /bin/app: it's the one
+                  # legitimate build artifact that would otherwise fall
+                  # inside an ignored path and silently disappear from the
+                  # final image.
                   /kaniko/executor --dockerfile=Dockerfile --context="dir://$(pwd)" \
                     --destination="$ECR_REPO:$IMAGE_TAG" --build-arg=BINARY=api --cache=false \
-                    --single-snapshot --ignore-path=/home/jenkins
+                    --single-snapshot \
+                    --ignore-path=/home/jenkins \
+                    --ignore-path=/bin \
+                    --ignore-path=/sbin \
+                    --ignore-path=/usr \
+                    --ignore-path=/lib \
+                    --ignore-path=/lib64 \
+                    --ignore-path=/etc
                 '''
             }
         }
