@@ -1,7 +1,11 @@
 // cmd/ingest fetches postings from every company in data/companies.yaml via
-// their registered ATS connector, extracts skills (docs/design.md §6
-// Stages 1-3), and persists both to DynamoDB Local. `report` prints the
-// ranked skill-frequency table — the actual DoD deliverable.
+// their registered ATS connector, dedupes/upserts them, and (as of Phase 4,
+// docs/design.md §9) hands each off to cmd/worker for extraction via S3 +
+// SQS rather than extracting inline — real AWS by default, DYNAMODB_ENDPOINT/
+// S3_ENDPOINT/SQS_ENDPOINT override for local testing against DynamoDB
+// Local + LocalStack (same convention cmd/api/cmd/rollup already use).
+// `report` prints the ranked skill-frequency table — the actual DoD
+// deliverable — and needs only DynamoDB.
 //
 // Usage:
 //
@@ -19,12 +23,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/config"
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/connectors"
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/dedupe"
-	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/extract"
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/model"
+	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/queue"
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/rank"
+	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/rawstore"
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/store"
 )
 
@@ -44,14 +55,18 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
 	defer cancel()
 
-	endpoint := envOr("DYNAMODB_ENDPOINT", "http://localhost:8000")
-
-	storeCtx, storeCancel := context.WithTimeout(ctx, 30*time.Second)
-	s, err := store.New(storeCtx, endpoint)
-	storeCancel()
+	startupCtx, startupCancel := context.WithTimeout(ctx, 30*time.Second)
+	cfg, err := awsconfig.LoadDefaultConfig(startupCtx)
+	startupCancel()
 	if err != nil {
-		log.Fatalf("connect to store: %v", err)
+		log.Fatalf("load aws config: %v", err)
 	}
+
+	var ddbOpts []func(*dynamodb.Options)
+	if endpoint := os.Getenv("DYNAMODB_ENDPOINT"); endpoint != "" {
+		ddbOpts = append(ddbOpts, func(o *dynamodb.Options) { o.BaseEndpoint = aws.String(endpoint) })
+	}
+	s := store.NewFromClient(dynamodb.NewFromConfig(cfg, ddbOpts...))
 
 	tableCtx, tableCancel := context.WithTimeout(ctx, 30*time.Second)
 	err = s.EnsureTable(tableCtx)
@@ -62,7 +77,27 @@ func main() {
 
 	switch os.Args[1] {
 	case "ingest":
-		runIngest(ctx, s, logger)
+		var s3Opts []func(*s3.Options)
+		if endpoint := os.Getenv("S3_ENDPOINT"); endpoint != "" {
+			s3Opts = append(s3Opts, func(o *s3.Options) { o.BaseEndpoint = aws.String(endpoint); o.UsePathStyle = true })
+		}
+		var sqsOpts []func(*sqs.Options)
+		if endpoint := os.Getenv("SQS_ENDPOINT"); endpoint != "" {
+			sqsOpts = append(sqsOpts, func(o *sqs.Options) { o.BaseEndpoint = aws.String(endpoint) })
+		}
+		s3c := s3.NewFromConfig(cfg, s3Opts...)
+		sqsc := sqs.NewFromConfig(cfg, sqsOpts...)
+
+		rawBucket := os.Getenv("RAW_BUCKET")
+		if rawBucket == "" {
+			log.Fatal("RAW_BUCKET must be set (the raw-content S3 bucket, docs/design.md §9)")
+		}
+		extractQueueURL := os.Getenv("EXTRACT_QUEUE_URL")
+		if extractQueueURL == "" {
+			log.Fatal("EXTRACT_QUEUE_URL must be set (modules/queues' extract-queue URL)")
+		}
+
+		runIngest(ctx, s, s3c, sqsc, rawBucket, extractQueueURL, logger)
 	case "report":
 		runReport(ctx, s)
 	default:
@@ -89,9 +124,8 @@ func envDuration(key string, fallback time.Duration) time.Duration {
 	return time.Duration(secs) * time.Second
 }
 
-func runIngest(ctx context.Context, s *store.Store, logger *slog.Logger) {
+func runIngest(ctx context.Context, s *store.Store, s3c *s3.Client, sqsc *sqs.Client, rawBucket, extractQueueURL string, logger *slog.Logger) {
 	companiesPath := envOr("COMPANIES_FILE", "data/companies.yaml")
-	skillsPath := envOr("SKILLS_FILE", "data/skills.yaml")
 	companyTimeout := envDuration("COMPANY_TIMEOUT", 20*time.Second)
 
 	httpClient := connectors.NewDefaultHTTPClient()
@@ -101,19 +135,10 @@ func runIngest(ctx context.Context, s *store.Store, logger *slog.Logger) {
 	if err != nil {
 		log.Fatalf("load %s: %v", companiesPath, err)
 	}
-
-	rawSkills, err := config.LoadSkills(skillsPath)
-	if err != nil {
-		log.Fatalf("load %s: %v", skillsPath, err)
-	}
-	skills, err := extract.CompileSkills(rawSkills)
-	if err != nil {
-		log.Fatalf("compile %s: %v", skillsPath, err)
-	}
-	logger.Info("ingest run starting", "companies", len(companies), "skills", len(skills), "companyTimeout", companyTimeout.String())
+	logger.Info("ingest run starting", "companies", len(companies), "companyTimeout", companyTimeout.String())
 
 	now := time.Now().UTC()
-	var totalFetched, totalMatched, totalCreated, totalUpdated, totalClosed, totalSkipped, totalSkillEdges int
+	var totalFetched, totalMatched, totalCreated, totalUpdated, totalClosed, totalSkipped, totalEnqueued int
 
 	for i, c := range companies {
 		logger.Info("company starting", "index", i+1, "of", len(companies), "company", c.Slug, "ats", c.ATS)
@@ -141,7 +166,7 @@ func runIngest(ctx context.Context, s *store.Store, logger *slog.Logger) {
 		matched := filterByRole(raw, c.RoleFilters)
 		totalMatched += len(matched)
 
-		var created, updated, skillEdges int
+		var created, updated, enqueued int
 		for _, rp := range matched {
 			posting, err := toPosting(c, rp, now)
 			if err != nil {
@@ -180,16 +205,15 @@ func runIngest(ctx context.Context, s *store.Store, logger *slog.Logger) {
 				updated++
 			}
 
-			n, err := extractAndStoreSkills(ctx, s, stored, rp, skills)
-			if err != nil {
-				logger.Warn("extraction failed", "company", c.Slug, "postingId", stored.ID, "error", err.Error())
+			if err := enqueueForExtraction(ctx, s, s3c, sqsc, rawBucket, extractQueueURL, stored, rp); err != nil {
+				logger.Warn("failed to enqueue for extraction", "company", c.Slug, "postingId", stored.ID, "error", err.Error())
 				continue
 			}
-			skillEdges += n
+			enqueued++
 		}
 		totalCreated += created
 		totalUpdated += updated
-		totalSkillEdges += skillEdges
+		totalEnqueued += enqueued
 
 		closed, err := closeStalePostings(ctx, s, c.Slug, raw, now)
 		if err != nil {
@@ -198,13 +222,39 @@ func runIngest(ctx context.Context, s *store.Store, logger *slog.Logger) {
 		totalClosed += closed
 
 		logger.Info("company complete", "company", c.Slug,
-			"fetched", len(raw), "roleMatched", len(matched), "new", created, "updated", updated, "closed", closed, "skillEdges", skillEdges)
+			"fetched", len(raw), "roleMatched", len(matched), "new", created, "updated", updated, "closed", closed, "enqueued", enqueued)
 	}
 
 	logger.Info("ingest run complete",
 		"companies", len(companies), "skipped", totalSkipped,
 		"fetched", totalFetched, "roleMatched", totalMatched,
-		"new", totalCreated, "updated", totalUpdated, "closed", totalClosed, "skillEdges", totalSkillEdges)
+		"new", totalCreated, "updated", totalUpdated, "closed", totalClosed, "enqueued", totalEnqueued)
+}
+
+// enqueueForExtraction uploads the posting's raw fetched content to S3
+// (rawstore) — DynamoDB only holds metadata, so this is what lets
+// cmd/worker get the body back after dequeuing — stamps the resulting key
+// onto the stored posting, and enqueues an extract-queue message
+// referencing both. Extraction itself (Stages 1-3) now happens entirely
+// in cmd/worker (docs/design.md §6/§9), not here.
+func enqueueForExtraction(ctx context.Context, s *store.Store, s3c *s3.Client, sqsc *sqs.Client, rawBucket, extractQueueURL string, stored model.Posting, rp connectors.RawPosting) error {
+	key, err := rawstore.Put(ctx, s3c, rawBucket, stored.ID, rp)
+	if err != nil {
+		return fmt.Errorf("upload raw content: %w", err)
+	}
+
+	stored.RawS3Key = key
+	if err := s.PutPosting(ctx, stored); err != nil {
+		return fmt.Errorf("stamp rawS3Key: %w", err)
+	}
+
+	if err := queue.SendExtractMessage(ctx, sqsc, extractQueueURL, queue.ExtractMessage{
+		PostingID: stored.ID,
+		RawS3Key:  key,
+	}); err != nil {
+		return fmt.Errorf("enqueue: %w", err)
+	}
+	return nil
 }
 
 // closeStalePostings implements docs/design.md §4's lifecycle rule: a
@@ -240,31 +290,6 @@ func closeStalePostings(ctx context.Context, s *store.Store, companySlug string,
 		closed++
 	}
 	return closed, nil
-}
-
-// extractAndStoreSkills runs Stages 1-3 (normalize, segment, dictionary
-// match) on a freshly-upserted posting, writes the resulting PostingSkill
-// edges, and stamps ExtractVer/SkillCount onto the stored posting. Returns
-// the number of skills matched.
-func extractAndStoreSkills(ctx context.Context, s *store.Store, stored model.Posting, rp connectors.RawPosting, skills []extract.CompiledSkill) (int, error) {
-	sections, err := extract.SegmentPosting(rp)
-	if err != nil {
-		return 0, fmt.Errorf("segment: %w", err)
-	}
-
-	matches := extract.MatchSkills(stored.ID, sections, skills)
-	for _, m := range matches {
-		if err := s.PutSkillEdge(ctx, m); err != nil {
-			return 0, fmt.Errorf("store skill edge %s: %w", m.SkillID, err)
-		}
-	}
-
-	stored.ExtractVer = extract.Version
-	stored.SkillCount = len(matches)
-	if err := s.PutPosting(ctx, stored); err != nil {
-		return 0, fmt.Errorf("update posting extraction fields: %w", err)
-	}
-	return len(matches), nil
 }
 
 // filterByRole keeps postings whose title contains any of the company's

@@ -12,3 +12,15 @@ services:
     # fast error. Local dev doesn't need the data to survive a restart
     # anyway; `make ingest` repopulates it.
     command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+
+  # SQS + S3 for the Phase 4 queue boundary between cmd/ingest and
+  # cmd/worker (docs/design.md §9) — named in the Phase 0 plan but not
+  # actually needed until the queue architecture existed to test against.
+  localstack:
+    image: localstack/localstack:3.0.2
+    container_name: job-syllabus-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs,s3
+      - DEFAULT_REGION=us-west-1
