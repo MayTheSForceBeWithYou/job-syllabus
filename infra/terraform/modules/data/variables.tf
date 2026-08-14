@@ -5,9 +5,9 @@ variable "project" {
 }
 
 variable "ecr_repo_names" {
-  description = "One ECR repo per cmd/ binary (docs/design.md §9: '5 repos')."
+  description = "One repo per cmd/ binary (docs/design.md §9: '5 repos') plus 'agent' for the Jenkins ephemeral Fargate build-agent image (ci/agent.Dockerfile, §10) — a 6th repo the doc's count doesn't mention explicitly but its own Jenkins section requires."
   type        = list(string)
-  default     = ["api", "ingest", "scraper", "worker", "rollup"]
+  default     = ["api", "ingest", "scraper", "worker", "rollup", "agent"]
 }
 
 variable "ecr_image_retain_count" {
