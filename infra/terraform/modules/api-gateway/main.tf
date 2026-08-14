@@ -18,6 +18,13 @@ resource "aws_apigatewayv2_vpc_link" "main" {
 # do the real routing/404s/method-not-allowed — API Gateway itself stays a
 # dumb proxy. payload_format_version 1.0 is what HTTP_PROXY integrations
 # to an ALB require.
+#
+# request_parameters overwrite:path is load-bearing: confirmed against a
+# real smoke test that HTTP_PROXY VPC_LINK integrations forward the
+# client's ORIGINAL path unchanged, stage prefix included — a request to
+# ".../prod/healthz" reached the app as literally "/prod/healthz", which
+# chi correctly 404'd since it only knows "/healthz". Rewriting the
+# outgoing path to just the captured {proxy} segment strips that prefix.
 resource "aws_apigatewayv2_integration" "alb" {
   api_id                 = aws_apigatewayv2_api.main.id
   integration_type       = "HTTP_PROXY"
@@ -26,6 +33,10 @@ resource "aws_apigatewayv2_integration" "alb" {
   connection_type        = "VPC_LINK"
   connection_id          = aws_apigatewayv2_vpc_link.main.id
   payload_format_version = "1.0"
+
+  request_parameters = {
+    "overwrite:path" = "/$request.path.proxy"
+  }
 }
 
 resource "aws_apigatewayv2_route" "proxy" {
