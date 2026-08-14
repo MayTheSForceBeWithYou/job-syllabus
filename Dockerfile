@@ -1,7 +1,10 @@
 # Multi-stage build producing any one of the five cmd/ binaries, selected by
-# --build-arg BINARY=ingest (default). Not wired into a deploy path yet —
-# that's Jenkins/ECR/ECS territory starting Phase 2 (docs/design.md §0.4).
-FROM golang:1.23-bookworm AS build
+# --build-arg BINARY=ingest (default). Never actually built as a real
+# container until Phase 3's first real CI run — go.mod had already moved
+# to `go 1.26.5` (GOTOOLCHAIN=local in this base image, so no auto-fetch)
+# while this stayed pinned to 1.23, so it failed immediately: "go.mod
+# requires go >= 1.26.5 (running go 1.23.12)".
+FROM golang:1.26-bookworm AS build
 ARG BINARY=ingest
 WORKDIR /src
 COPY go.mod go.sum ./
