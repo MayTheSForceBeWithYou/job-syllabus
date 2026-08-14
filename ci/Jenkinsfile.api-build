@@ -62,10 +62,17 @@ pipeline {
                 // client to run either) using the same ECR password
                 // every other stage already fetches via the AWS CLI.
                 sh '''
-                  mkdir -p /kaniko/.docker
+                  # /kaniko/.docker isn't writable by the non-root jenkins
+                  # user this pipeline runs as — confirmed against a real
+                  # run ("Permission denied"). Kaniko reads DOCKER_CONFIG
+                  # to find config.json, defaulting to /kaniko/.docker
+                  # only when unset, so point it at the one directory this
+                  # user definitely owns instead.
+                  export DOCKER_CONFIG="$HOME/.docker"
+                  mkdir -p "$DOCKER_CONFIG"
                   ECR_HOST="${ECR_REPO%%/*}"
                   AUTH=$(printf "AWS:%s" "$(aws ecr get-login-password --region "$AWS_REGION")" | base64 -w0)
-                  printf '{"auths":{"%s":{"auth":"%s"}}}' "$ECR_HOST" "$AUTH" > /kaniko/.docker/config.json
+                  printf '{"auths":{"%s":{"auth":"%s"}}}' "$ECR_HOST" "$AUTH" > "$DOCKER_CONFIG/config.json"
                   /kaniko/executor --dockerfile=Dockerfile --context="dir://$(pwd)" \
                     --destination="$ECR_REPO:$IMAGE_TAG" --build-arg=BINARY=api --cache=false
                 '''
