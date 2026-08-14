@@ -1,0 +1,94 @@
+#!/bin/bash
+# Provisions Jenkins from scratch on every boot of a fresh instance -
+# this whole script IS the "no clicking" half of docs/design.md §10's DoD.
+set -euxo pipefail
+
+DEVICE=/dev/xvdf
+MOUNT_POINT=/var/lib/jenkins
+
+# The EBS volume can take a few seconds to attach after instance launch.
+for i in $(seq 1 30); do
+  [ -e "$DEVICE" ] && break
+  sleep 2
+done
+
+# A blank volume (no prior snapshot) has no filesystem yet; a
+# snapshot-restored one already does and must NOT be reformatted.
+FSTYPE=$(file -s "$DEVICE" | awk '{print $2}')
+if [ "$FSTYPE" = "data" ]; then
+  mkfs -t xfs "$DEVICE"
+fi
+
+mkdir -p "$MOUNT_POINT"
+mount "$DEVICE" "$MOUNT_POINT"
+echo "$DEVICE $MOUNT_POINT xfs defaults,nofail 0 2" >> /etc/fstab
+
+dnf install -y java-21-amazon-corretto git awscli
+
+cat > /etc/yum.repos.d/jenkins.repo <<'REPO'
+[jenkins]
+name=Jenkins-stable
+baseurl=https://pkg.jenkins.io/redhat-stable
+gpgcheck=1
+REPO
+rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+dnf install -y jenkins
+
+# The jenkins package creates /var/lib/jenkins owned by jenkins:jenkins
+# before our real volume is mounted there; fix ownership now that it is.
+chown -R jenkins:jenkins "$MOUNT_POINT"
+
+# Pull JCasC config, Job DSL seed, and the plugin manifest from the repo
+# (public - no auth needed). This is what makes config-as-code real: the
+# controller's job/plugin/system state comes from git, not from clicking.
+CI_DIR=/opt/job-syllabus-ci
+rm -rf "$CI_DIR"
+git clone --depth 1 "${repo_url}" "$CI_DIR"
+
+install -d -o jenkins -g jenkins /var/lib/jenkins/casc_configs
+install -o jenkins -g jenkins -m 0644 "$CI_DIR/ci/jenkins.yaml" /var/lib/jenkins/casc_configs/jenkins.yaml
+
+# jenkins-plugin-manager installs the plugin set from ci/plugins.txt at
+# provision time, before Jenkins ever starts - docs/design.md §10.
+PLUGIN_CLI_VERSION=2.13.2
+curl -fsSL -o /usr/local/bin/jenkins-plugin-manager.jar \
+  "https://github.com/jenkinsci/plugin-installation-manager-tool/releases/download/$${PLUGIN_CLI_VERSION}/jenkins-plugin-manager-$${PLUGIN_CLI_VERSION}.jar"
+java -jar /usr/local/bin/jenkins-plugin-manager.jar \
+  --war /usr/share/java/jenkins.war \
+  --plugin-file "$CI_DIR/ci/plugins.txt" \
+  --plugin-download-directory /var/lib/jenkins/plugins
+chown -R jenkins:jenkins /var/lib/jenkins/plugins
+
+# Dynamic values JCasC (ci/jenkins.yaml) needs but can't hardcode - it's a
+# static file cloned from a public repo, so nothing secret or
+# apply-specific lives in it directly. The admin password comes from SSM
+# (via this instance's IAM role - no static credentials anywhere); the
+# rest comes straight from Terraform, which already knows them.
+JENKINS_ADMIN_PASSWORD=$(aws ssm get-parameter \
+  --name "${admin_password_ssm_name}" \
+  --with-decryption \
+  --region "${aws_region}" \
+  --query 'Parameter.Value' \
+  --output text)
+
+cat > /etc/jenkins-env <<ENV
+JENKINS_ADMIN_PASSWORD=$JENKINS_ADMIN_PASSWORD
+AWS_REGION=${aws_region}
+ECS_CLUSTER_ARN=${ecs_cluster_arn}
+AGENT_ECR_REPO_URL=${agent_ecr_repo_url}
+FARGATE_SUBNET_IDS=${fargate_subnet_ids}
+FARGATE_SG_ID=${fargate_sg_id}
+TASK_EXECUTION_ROLE_ARN=${task_execution_role_arn}
+ENV
+chmod 600 /etc/jenkins-env
+
+mkdir -p /etc/systemd/system/jenkins.service.d
+cat > /etc/systemd/system/jenkins.service.d/override.conf <<CONF
+[Service]
+EnvironmentFile=/etc/jenkins-env
+Environment="CASC_JENKINS_CONFIG=/var/lib/jenkins/casc_configs/jenkins.yaml"
+Environment="JAVA_OPTS=-Djenkins.install.runSetupWizard=false"
+CONF
+
+systemctl daemon-reload
+systemctl enable --now jenkins

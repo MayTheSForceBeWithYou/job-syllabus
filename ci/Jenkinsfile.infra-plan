@@ -1,0 +1,48 @@
+// docs/design.md §10: PR touching infra/**
+//   fmt -check -> validate -> tfsec -> checkov -> plan -> post plan as artifact
+//
+// Push-triggered rather than true PR-discovery for now — see ci/jobs.groovy
+// for why (needs GitHub credentials this seed doesn't have yet).
+pipeline {
+    agent { label 'fargate-agent' }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+    }
+
+    triggers {
+        githubPush()
+    }
+
+    stages {
+        stage('fmt check') {
+            steps {
+                dir('infra/terraform') { sh 'terraform fmt -recursive -check' }
+            }
+        }
+        stage('validate') {
+            steps {
+                dir('infra/terraform/envs/dev-compute') {
+                    sh 'terraform init -backend=false'
+                    sh 'terraform validate'
+                }
+            }
+        }
+        stage('tfsec') {
+            steps { sh 'tfsec infra/terraform' }
+        }
+        stage('checkov') {
+            steps { sh 'checkov -d infra/terraform --compact' }
+        }
+        stage('plan') {
+            steps {
+                dir('infra/terraform/envs/dev-compute') {
+                    sh 'terraform init'
+                    sh 'terraform plan -out=tfplan'
+                }
+                archiveArtifacts artifacts: 'infra/terraform/envs/dev-compute/tfplan', fingerprint: true
+            }
+        }
+    }
+}

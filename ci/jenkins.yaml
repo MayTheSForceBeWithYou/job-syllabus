@@ -1,0 +1,59 @@
+# Jenkins Configuration as Code — docs/design.md §10.
+#
+# This file is the whole point of the exercise: it is cloned from this
+# (public) repo at boot by infra/terraform/modules/jenkins/user_data.sh.tftpl
+# and is the ONLY source of Jenkins' config. Nothing here is ever set
+# through the UI — changes made there don't persist across a rebuild, and
+# that's deliberate (docs/design.md §10's DoD: terminate the instance,
+# terraform apply, get a fully-configured Jenkins back with no clicking).
+#
+# Values that can't be hardcoded in a public file (secrets, apply-specific
+# resource IDs) come from environment variables user_data writes to
+# /etc/jenkins-env, sourced by systemd before Jenkins starts.
+
+jenkins:
+  systemMessage: "job-syllabus Jenkins — managed entirely via JCasC (ci/jenkins.yaml). Do not configure through the UI; it will not persist."
+  numExecutors: 0 # all work runs on ephemeral Fargate agents — never on the controller
+  mode: EXCLUSIVE
+  labelString: "controller"
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+  clouds:
+    - ecs:
+        name: "fargate"
+        credentialsId: "" # empty = use the controller's own IAM instance profile, no static keys
+        cluster: "${ECS_CLUSTER_ARN}"
+        regionName: "${AWS_REGION}"
+        templates:
+          - templateName: "fargate-agent"
+            label: "fargate-agent"
+            image: "${AGENT_ECR_REPO_URL}:latest"
+            launchType: "FARGATE"
+            operatingSystemFamily: "LINUX"
+            cpu: "1024"
+            memory: "2048"
+            networkMode: "awsvpc"
+            assignPublicIp: true
+            subnets: "${FARGATE_SUBNET_IDS}"
+            securityGroups: "${FARGATE_SG_ID}"
+            executionRoleArn: "${TASK_EXECUTION_ROLE_ARN}"
+            taskRoleArn: "${TASK_EXECUTION_ROLE_ARN}" # tightened to a dedicated least-privilege agent task role in a later phase
+            remoteFSRoot: "/home/jenkins"
+            uniqueRemoteFSRoot: true
+
+unclassified:
+  location:
+    url: "https://jenkins.job-syllabus.skopekreep.com/"
+
+jobs:
+  - file: /opt/job-syllabus-ci/ci/jobs.groovy

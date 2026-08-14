@@ -2,7 +2,7 @@
 
 resource "aws_security_group" "jenkins_alb" {
   name        = "${var.project}-jenkins-alb"
-  description = "Jenkins ALB - inbound restricted to the operator's IP/CIDR only"
+  description = "Jenkins ALB - inbound restricted to the operator IP/CIDR only"
   vpc_id      = aws_vpc.main.id
 
   ingress {

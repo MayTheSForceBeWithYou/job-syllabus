@@ -1,0 +1,19 @@
+# Installed at provision time by jenkins-plugin-manager, from
+# infra/terraform/modules/jenkins/user_data.sh.tftpl — docs/design.md §10.
+# Transitive dependencies are resolved automatically; this list is direct
+# requirements only.
+
+configuration-as-code
+job-dsl
+git
+github
+github-branch-source
+workflow-aggregator
+workflow-job
+amazon-ecs
+credentials-binding
+pipeline-utility-steps
+pipeline-stage-view
+timestamper
+ansicolor
+matrix-auth

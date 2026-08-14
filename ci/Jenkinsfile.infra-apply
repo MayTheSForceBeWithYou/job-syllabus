@@ -1,0 +1,52 @@
+// docs/design.md §10: manual, after infra-plan
+//   input approval -> apply
+//
+// Re-runs `terraform plan` fresh immediately before applying (rather than
+// reusing infra-plan's artifact via the copyArtifacts plugin, which isn't
+// in ci/plugins.txt) so the approved plan can never be stale by the time
+// it's actually applied — the `input` step shows this run's plan output,
+// not a plan from an earlier build.
+//
+// Known caveat worth being upfront about (see docs/phase-2.md): this job
+// runs ON the Jenkins EC2 instance that IS part of dev-compute. An apply
+// that replaces the Jenkins instance itself would kill the pipeline
+// mid-run. Not solved here — noted as a real limitation of Jenkins
+// self-managing its own infra, not a bug to silently work around.
+pipeline {
+    agent { label 'fargate-agent' }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+    }
+
+    // No automatic triggers, deliberately — manual only.
+
+    stages {
+        stage('plan') {
+            steps {
+                dir('infra/terraform/envs/dev-compute') {
+                    sh 'terraform init'
+                    sh 'terraform plan -out=tfplan -detailed-exitcode || true'
+                    sh 'terraform show -no-color tfplan > tfplan.txt'
+                    archiveArtifacts artifacts: 'infra/terraform/envs/dev-compute/tfplan.txt', fingerprint: true
+                }
+            }
+        }
+        stage('approve') {
+            steps {
+                script {
+                    def planText = readFile('infra/terraform/envs/dev-compute/tfplan.txt')
+                    input message: "Apply this plan?", parameters: [text(name: 'Plan', defaultValue: planText)]
+                }
+            }
+        }
+        stage('apply') {
+            steps {
+                dir('infra/terraform/envs/dev-compute') {
+                    sh 'terraform apply -auto-approve tfplan'
+                }
+            }
+        }
+    }
+}

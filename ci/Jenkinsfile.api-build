@@ -1,0 +1,73 @@
+// docs/design.md §10: push to main, path cmd/**, internal/**
+//   go vet -> golangci-lint -> go test -race -cover -> extraction
+//   validation gate -> build (multi-stage -> distroless) -> Trivy
+//   (fail on HIGH+) -> ECR push tagged $GIT_SHA -> ecs update-service
+//   -> poll stability -> smoke test /healthz
+//
+// Deploy + smoke-test stages are defined but disabled (`when { expression
+// { false } }`) until Phase 3 creates the service-api ECS service — there's
+// nothing to deploy to yet. Flip them on then, don't recreate this file.
+pipeline {
+    agent { label 'fargate-agent' }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+    }
+
+    triggers {
+        githubPush()
+    }
+
+    environment {
+        AWS_REGION = 'us-west-1'
+        ECR_REPO   = '881811711506.dkr.ecr.us-west-1.amazonaws.com/job-syllabus/api'
+        IMAGE_TAG  = "${env.GIT_COMMIT}"
+    }
+
+    stages {
+        stage('Vet') {
+            steps { sh 'go vet ./...' }
+        }
+        stage('Lint') {
+            steps { sh 'golangci-lint run ./...' }
+        }
+        stage('Test') {
+            steps { sh 'go test -race -cover ./...' }
+        }
+        stage('Extraction validation gate') {
+            // §6: fails below 90% precision — the same gate `make test`
+            // runs locally, run again here so a bad skills.yaml/matcher
+            // change can't merge without CI catching it.
+            steps { sh 'go test ./internal/extract/... -run TestExtractionPrecisionRecall -v' }
+        }
+        stage('Build image') {
+            steps {
+                sh '''
+                  aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REPO"
+                  docker buildx build --build-arg BINARY=api -t "$ECR_REPO:$IMAGE_TAG" --push .
+                '''
+            }
+        }
+        stage('Trivy scan') {
+            steps {
+                sh 'trivy image --severity HIGH,CRITICAL --exit-code 1 "$ECR_REPO:$IMAGE_TAG"'
+            }
+        }
+        stage('Deploy') {
+            when { expression { return false } } // Phase 3: enable once service-api exists
+            steps {
+                sh '''
+                  aws ecs update-service --cluster job-syllabus --service api --force-new-deployment --region "$AWS_REGION"
+                  aws ecs wait services-stable --cluster job-syllabus --services api --region "$AWS_REGION"
+                '''
+            }
+        }
+        stage('Smoke test') {
+            when { expression { return false } } // Phase 3: enable once the API has a real URL
+            steps {
+                sh 'curl -fsS https://api.job-syllabus.skopekreep.com/healthz'
+            }
+        }
+    }
+}
