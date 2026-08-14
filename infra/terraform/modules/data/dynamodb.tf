@@ -1,8 +1,13 @@
 # Single-table design per docs/design.md §4 — mirrors internal/store's
 # DynamoDB Local schema (EnsureTable in internal/store/store.go) exactly, so
 # the same application code works against either.
+#
+# Name is "jobsyllabus" (no hyphen) deliberately, NOT var.project
+# ("job-syllabus") — internal/store.TableName has hardcoded "jobsyllabus"
+# since Phase 0/1, and that's the established, already-tested convention
+# to match, not the newer Terraform naming.
 resource "aws_dynamodb_table" "main" {
-  name         = var.project
+  name         = "jobsyllabus"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "PK"
   range_key    = "SK"
