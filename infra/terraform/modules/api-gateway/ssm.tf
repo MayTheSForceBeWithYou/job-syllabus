@@ -5,5 +5,5 @@
 resource "aws_ssm_parameter" "api_url" {
   name  = "/${var.project}/api/url"
   type  = "String"
-  value = aws_apigatewayv2_api.main.api_endpoint
+  value = "${aws_apigatewayv2_api.main.api_endpoint}/prod"
 }

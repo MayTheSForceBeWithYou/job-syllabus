@@ -22,6 +22,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "AWS_REGION", value = var.aws_region },
         { name = "SKILLS_FILE", value = "/data/skills.yaml" },
         { name = "COMPANIES_FILE", value = "/data/companies.yaml" },
+        { name = "ALLOWED_CIDR", value = var.allowed_cidr },
       ]
       logConfiguration = {
         logDriver = "awslogs"

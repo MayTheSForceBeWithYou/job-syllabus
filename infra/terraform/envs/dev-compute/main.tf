@@ -61,13 +61,13 @@ module "service_api" {
   log_group_name          = module.ecs_cluster.log_group_name
   ecr_repo_url            = data.terraform_remote_state.data.outputs.ecr_repository_urls["api"]
   table_arn               = data.terraform_remote_state.data.outputs.table_arn
+  allowed_cidr            = var.api_allowed_cidr
 }
 
 module "api_gateway" {
   source = "../../modules/api-gateway"
 
-  vpc_link_sg_id        = module.network.vpc_link_sg_id
-  private_subnet_ids    = module.network.private_subnet_ids
-  alb_listener_arn      = module.service_api.alb_listener_arn
-  operator_allowed_cidr = var.api_allowed_cidr
+  vpc_link_sg_id     = module.network.vpc_link_sg_id
+  private_subnet_ids = module.network.private_subnet_ids
+  alb_listener_arn   = module.service_api.alb_listener_arn
 }

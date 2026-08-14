@@ -60,7 +60,7 @@ func main() {
 	}
 	logger.Info("api: loaded config", "companies", len(companies), "skills", len(skills))
 
-	srv := api.New(s, skills, companies)
+	srv := api.New(s, skills, companies, os.Getenv("ALLOWED_CIDR"))
 
 	addr := ":" + envOr("PORT", "8080")
 	httpSrv := &http.Server{

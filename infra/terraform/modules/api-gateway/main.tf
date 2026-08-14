@@ -1,6 +1,8 @@
 # HTTP API -> VPC Link -> internal ALB -> service-api (docs/design.md §3
 # architecture diagram). No JWT authorizer yet (Phase 6) - IP-restriction
-# via WAF is the whole story for Phase 3, per its own DoD.
+# for Phase 3 is application-layer middleware in cmd/api instead of a WAF
+# here, since AWS WAFv2 doesn't support associating with HTTP APIs at all
+# (only REST APIs) — see internal/api/ipallow.go for the full rationale.
 resource "aws_apigatewayv2_api" "main" {
   name          = "${var.project}-api"
   protocol_type = "HTTP"
@@ -37,9 +39,15 @@ resource "aws_cloudwatch_log_group" "access" {
   retention_in_days = 30
 }
 
-resource "aws_apigatewayv2_stage" "default" {
+# A named stage ("prod"), not HTTP API's auto-generated "$default" pseudo
+# -stage: WAFv2's AssociateWebACL rejects a $default stage's ARN outright
+# ("The ARN isn't valid"), even percent-encoded — confirmed against a real
+# apply, not just docs. A named stage sidesteps the whole class of issue
+# and is the more conventional setup anyway. This does mean the API's
+# base path is .../prod, not the bare domain — see outputs.tf/ssm.tf.
+resource "aws_apigatewayv2_stage" "prod" {
   api_id      = aws_apigatewayv2_api.main.id
-  name        = "$default"
+  name        = "prod"
   auto_deploy = true
 
   access_log_settings {

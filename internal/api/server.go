@@ -4,7 +4,8 @@
 // /v1/companies, /v1/stats/overview, /healthz, /readyz. Write endpoints
 // (submit/reviews/exports) and the Cognito JWT authorizer are later
 // phases — Phase 3's own DoD is explicit that this is read-only, "no auth
-// yet (locked to your IP)" at the network layer (API Gateway + WAF).
+// yet (locked to your IP)" — enforced here via ipAllowlist, not a WAF, see
+// ipallow.go for why.
 package api
 
 import (
@@ -22,16 +23,17 @@ import (
 // cmd/ingest uses) — precomputed into lookup maps here since every
 // request that touches them would otherwise rebuild the same map.
 type Server struct {
-	Store     *store.Store
-	Skills    []model.Skill
-	Companies []connectors.CompanyConfig
+	Store       *store.Store
+	Skills      []model.Skill
+	Companies   []connectors.CompanyConfig
+	AllowedCIDR string // empty disables IP-restriction (local testing) — see ipallow.go
 
 	skillsByID map[string]model.Skill
 	tierBySlug map[string]string
 }
 
 // New builds a Server, precomputing its lookup maps.
-func New(s *store.Store, skills []model.Skill, companies []connectors.CompanyConfig) *Server {
+func New(s *store.Store, skills []model.Skill, companies []connectors.CompanyConfig, allowedCIDR string) *Server {
 	skillsByID := make(map[string]model.Skill, len(skills))
 	for _, sk := range skills {
 		skillsByID[sk.ID] = sk
@@ -41,11 +43,12 @@ func New(s *store.Store, skills []model.Skill, companies []connectors.CompanyCon
 		tierBySlug[c.Slug] = c.Tier
 	}
 	return &Server{
-		Store:      s,
-		Skills:     skills,
-		Companies:  companies,
-		skillsByID: skillsByID,
-		tierBySlug: tierBySlug,
+		Store:       s,
+		Skills:      skills,
+		Companies:   companies,
+		AllowedCIDR: allowedCIDR,
+		skillsByID:  skillsByID,
+		tierBySlug:  tierBySlug,
 	}
 }
 
@@ -69,6 +72,7 @@ func (s *Server) Router() http.Handler {
 	r.Get("/readyz", s.handleReadyz)
 
 	r.Route("/v1", func(r chi.Router) {
+		r.Use(ipAllowlist(s.AllowedCIDR))
 		r.Get("/skills", s.handleListSkills)
 		r.Get("/skills/{id}", s.handleGetSkill)
 		r.Get("/skills/{id}/postings", s.handleGetSkillPostings)

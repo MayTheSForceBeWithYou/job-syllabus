@@ -66,6 +66,15 @@ variable "table_arn" {
   type = string
 }
 
+# docs/design.md §13 Phase 3 DoD: "no auth yet, locked to your IP."
+# Enforced by cmd/api itself (internal/api/ipallow.go), not a WAF — AWS
+# WAFv2 doesn't support associating with HTTP APIs (API Gateway v2) at
+# all, only REST APIs (confirmed against a real failing apply and AWS's
+# own AssociateWebACL API reference).
+variable "allowed_cidr" {
+  type = string
+}
+
 variable "cpu" {
   description = "docs/design.md §9 sizing table: 0.25 vCPU."
   type        = number
