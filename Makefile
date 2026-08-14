@@ -1,5 +1,12 @@
 .PHONY: build test lint fmt up down ingest report clean
 
+# GNU Make on Windows has no sleep(1). Prefer PowerShell; fall back to Unix sleep.
+ifeq ($(OS),Windows_NT)
+WAIT = powershell -NoProfile -Command "Start-Sleep -Seconds 2"
+else
+WAIT = sleep 2
+endif
+
 build:
 	go build ./...
 
@@ -15,7 +22,7 @@ fmt:
 up:
 	docker compose up -d
 	@echo "waiting for DynamoDB Local..."
-	@sleep 2
+	@$(WAIT)
 
 down:
 	docker compose down
