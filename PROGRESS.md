@@ -1,7 +1,6 @@
 # Progress
 
-**Last updated:** 2026-08-13
-**Commit:** `5becb90` ("Add hand-labeled validation set + precision/recall gate (§6)")
+**Last updated:** 2026-08-14
 **Branch:** `main`, matches `origin/main`
 
 This supersedes the earlier Cursor-generated audit in this file, which was
@@ -11,12 +10,13 @@ untracked `job-syllabus-design.md` as a competing source of truth; that's
 resolved (see `docs/design-full-reference.md`'s header) and `docs/design.md`
 is the only source of truth.
 
-Scope for this session, per the operator's explicit instruction: Phase 0
-(scaffold) and Phase 1 (local vertical slice) combined, targeting the DoD in
-`docs/design.md` §17. **Phase 0 and Phase 1 are both complete** — see
-[docs/phase-0.md](docs/phase-0.md) and [docs/phase-1.md](docs/phase-1.md)
-for the full writeups (§0.6 requires these; they're the more detailed
-companion to this file).
+**Phase 0, Phase 1, and Phase 2 are all complete** — see
+[docs/phase-0.md](docs/phase-0.md), [docs/phase-1.md](docs/phase-1.md), and
+[docs/phase-2.md](docs/phase-2.md) for the full writeups (§0.6 requires
+these; they're the more detailed companion to this file). Phase 2's
+application-level content (what's built/tested in Go) is unchanged from
+Phase 1 below; what's new is real AWS infrastructure — see "Phase 2:
+infrastructure" further down.
 
 ## DoD: met
 
@@ -147,6 +147,30 @@ TestExtractionPrecisionRecall -v`: 70 hand-labeled postings, **precision
   structured-fact extraction.
 
 ---
+
+## Phase 2: infrastructure
+
+Real AWS infrastructure now runs in `us-west-1`, entirely as Terraform
+across three stacks (`bootstrap`, `envs/dev-data`, `envs/dev-compute` —
+see [docs/phase-2.md](docs/phase-2.md) for the full breakdown) plus a
+Jenkins controller configured entirely as code (JCasC + Job DSL, zero
+UI clicking).
+
+**Phase 2 DoD: met.** The Jenkins EC2 instance was terminated and
+`terraform apply` alone brought back a fully-configured Jenkins — JCasC
+loaded clean, all three seeded jobs (`api-build`, `infra-plan`,
+`infra-apply`) present, ALB target healthy, `/login` returning HTTP 200 —
+with no manual steps. Getting there surfaced nine real bugs (Nitro/NVMe
+device-symlink detection, Jenkins' RPM repo migrating to `rpm-stable` with
+a different signing key, a JCasC field-name mismatch against the installed
+`amazon-ecs` plugin's actual schema, and six smaller ones); all documented
+with root causes in `docs/phase-2.md`.
+
+Cost note: `dev-data` (DynamoDB, S3, ECR, Route53 zone) is meant to stay
+running indefinitely — near-free at rest. `dev-compute` (network, Jenkins
+EC2+ALB, ECS cluster) is the ~$30/mo part and is designed to be destroyed
+and reapplied at will; `cmd/rollup export`/`import` is the safety net if
+`dev-data` itself is ever torn down.
 
 ## Postmortems worth keeping
 

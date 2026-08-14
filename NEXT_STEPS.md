@@ -1,11 +1,29 @@
 # Next steps
 
-**Phase 0 and Phase 1 are both complete.** DoD met (`docs/design.md` §17):
-`make ingest && make report` prints a ranked skill-frequency table from real
-postings across 5 companies — see PROGRESS.md for the actual output. The
-§6 validation gate also passes (precision 1.000, recall 0.942, 70
-hand-labeled postings). `docs/phase-0.md` and `docs/phase-1.md` writeups
-are done (§0.6). What's below is what's next, past this session's scope.
+**Phase 0, Phase 1, and Phase 2 are all complete.** Phase 0/1 DoD met
+(`docs/design.md` §17): `make ingest && make report` prints a ranked
+skill-frequency table from real postings across 5 companies — see
+PROGRESS.md for the actual output. The §6 validation gate also passes
+(precision 1.000, recall 0.942, 70 hand-labeled postings). Phase 2 DoD met:
+real Terraform-managed AWS infrastructure plus a fully config-as-code
+Jenkins, validated by terminating the Jenkins instance and confirming
+`terraform apply` alone brings it back fully working — see
+[docs/phase-2.md](docs/phase-2.md). `docs/phase-0.md`, `docs/phase-1.md`,
+and `docs/phase-2.md` writeups are all done (§0.6).
+
+## Phase 3 and beyond (not started)
+
+Per `docs/design.md`'s phase list: `service-api`/`service-worker` (the
+actual application running on the ECS cluster Phase 2 built), auth
+(Cognito), the API Gateway front door, and the Expo/mobile client. The
+`api-build` Jenkins pipeline already has Deploy/Smoke-test stages written
+but gated off (`when { expression { return false } }`) specifically until
+`service-api` exists. `ci/jobs.groovy` also defers client-build, backfill,
+and re-extract jobs to their own later phases, and `infra-plan`'s trigger
+is push-based rather than true PR-discovery pending GitHub credentials in
+Jenkins.
+
+## What's below is carried over from Phase 1, still accurate
 
 ## Accepted: heading-keyword/structure classification doesn't fully generalize
 

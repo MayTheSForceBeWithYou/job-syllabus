@@ -1,11 +1,12 @@
 # How to test what's built so far
 
-This covers what actually works today (`5becb90`). It'll grow as more of
-`docs/design.md` gets implemented — check the date/commit below against
+This covers what actually works today. It'll grow as more of
+`docs/design.md` gets implemented — check the date below against
 `git log` if it's been a while.
 
-**Last updated:** 2026-08-13, commit `5becb90` — Phase 0/1 complete, DoD and
-§6 validation gate both passing.
+**Last updated:** 2026-08-14 — Phase 0/1/2 complete, DoD and §6 validation
+gate both passing, real AWS infrastructure + Jenkins live. Sections 1-5
+below (local pipeline) are unchanged from Phase 1; section 6 is new.
 
 ## Prerequisites
 
@@ -130,3 +131,42 @@ make down    # docker compose down
 
 (`make clean` also removes volumes, but there aren't any right now since
 DynamoDB Local runs in-memory.)
+
+## 6. Testing the real infrastructure (Phase 2)
+
+This needs AWS CLI credentials configured for the same account bootstrap
+ran against, and Terraform on `PATH`.
+
+**Jenkins**: `https://jenkins.job-syllabus.skopekreep.com` — admin
+username `admin`, password from SSM:
+
+```
+aws ssm get-parameter --name /job-syllabus/jenkins/admin-password --with-decryption --region us-west-1 --query Parameter.Value --output text
+```
+
+Three jobs should be visible: `api-build`, `infra-plan`, `infra-apply`
+(seeded by the Job DSL script in `ci/jobs.groovy` — not created by hand).
+
+**Terraform stacks** (`infra/terraform/envs/{dev-data,dev-compute}`):
+standard `terraform init && terraform plan` in either directory. `dev-data`
+should almost never show drift (it's long-lived); `dev-compute` is
+designed to be destroyed and reapplied at will for cost control —
+`terraform destroy` there, followed by `terraform apply`, is the actual
+Phase 2 DoD test (see `docs/phase-2.md`) and should always end with a
+healthy Jenkins and no manual steps.
+
+**Diagnosing a boot that doesn't come up clean**: don't trust
+`terraform apply`'s exit code alone — poll the instance directly via SSM
+(no SSH needed, works through the IAM instance role):
+
+```
+aws ssm send-command --instance-ids <id> --document-name "AWS-RunShellScript" \
+  --parameters 'commands=["systemctl is-active jenkins","tail -40 /var/log/cloud-init-output.log"]' \
+  --region us-west-1 --query 'Command.CommandId' --output text
+# then, after a few seconds:
+aws ssm get-command-invocation --command-id <command-id> --instance-id <id> --region us-west-1 --query StandardOutputContent --output text
+```
+
+If the AWS CLI's own output garbles with `'charmap' codec can't encode`
+errors on Windows, that's a local console-encoding issue, not a remote
+failure — set `PYTHONUTF8=1` first.
