@@ -31,10 +31,12 @@ node_modules/
 dist/
 web-build/
 
-# Terraform (future infra work)
+# Terraform
 .terraform/
 *.tfstate
 *.tfstate.*
+*.tfplan
 *.tfvars
 !*.tfvars.example
-.terraform.lock.hcl
+# .terraform.lock.hcl is intentionally NOT ignored - it pins provider
+# versions (like go.sum) and should be committed.
