@@ -10,13 +10,15 @@ untracked `job-syllabus-design.md` as a competing source of truth; that's
 resolved (see `docs/design-full-reference.md`'s header) and `docs/design.md`
 is the only source of truth.
 
-**Phase 0, Phase 1, and Phase 2 are all complete** — see
-[docs/phase-0.md](docs/phase-0.md), [docs/phase-1.md](docs/phase-1.md), and
-[docs/phase-2.md](docs/phase-2.md) for the full writeups (§0.6 requires
-these; they're the more detailed companion to this file). Phase 2's
-application-level content (what's built/tested in Go) is unchanged from
-Phase 1 below; what's new is real AWS infrastructure — see "Phase 2:
-infrastructure" further down.
+**Phase 0, Phase 1, Phase 2, and Phase 3 are all complete** — see
+[docs/phase-0.md](docs/phase-0.md), [docs/phase-1.md](docs/phase-1.md),
+[docs/phase-2.md](docs/phase-2.md), and [docs/phase-3.md](docs/phase-3.md)
+for the full writeups (§0.6 requires these; they're the more detailed
+companion to this file). Phase 2's application-level content (what's
+built/tested in Go) is unchanged from Phase 1 below; what's new is real
+AWS infrastructure — see "Phase 2: infrastructure" further down. Phase 3
+adds the read-only `service-api` — see "Phase 3: the read API" further
+down still.
 
 ## DoD: met
 
@@ -171,6 +173,37 @@ running indefinitely — near-free at rest. `dev-compute` (network, Jenkins
 EC2+ALB, ECS cluster) is the ~$30/mo part and is designed to be destroyed
 and reapplied at will; `cmd/rollup export`/`import` is the safety net if
 `dev-data` itself is ever torn down.
+
+## Phase 3: the read API
+
+`service-api` (`internal/api`, `cmd/api`) is deployed on ECS Fargate
+behind an internal ALB, fronted by an API Gateway HTTP API + VPC Link, and
+serves real ranked-skill/company/posting data straight from the same
+DynamoDB table `cmd/ingest` writes to. Read-only, no auth yet — locked to
+the operator's IP via an application-layer allowlist instead of a WAF
+(HTTP APIs aren't a supported WAFv2 resource type at all). Deployed by
+`ci/Jenkinsfile.api-build` on every push to `main`: vet → lint → test →
+extraction gate → Kaniko build → verify-in-ECR → Trivy → ECS deploy →
+smoke test.
+
+**Phase 3 DoD: met.**
+
+```
+$ curl https://o79zaeqqna.execute-api.us-west-1.amazonaws.com/prod/v1/skills?limit=5
+{"skills":[
+  {"id":"aws","display":"Amazon Web Services (AWS)","category":"cloud","count":16,...,"pctOfPostings":22.5},
+  {"id":"kubernetes","display":"Kubernetes","category":"containers","count":16,...,"pctOfPostings":22.5},
+  ...
+],"totalPostings":71}
+```
+
+Getting there surfaced fifteen real bugs across API Gateway routing/IP
+handling, Kaniko's interaction with a long-lived JNLP agent process, and
+the CI pipeline's own first-ever real executions — all documented with
+root causes in `docs/phase-3.md`. The real AWS DynamoDB table had never
+been populated (`cmd/ingest` only supports DynamoDB Local); it now holds
+the same 71-posting/5-company dataset as local dev, synced via `cmd/rollup
+export`/`import`.
 
 ## Postmortems worth keeping
 

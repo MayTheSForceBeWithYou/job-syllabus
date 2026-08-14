@@ -4,9 +4,11 @@ This covers what actually works today. It'll grow as more of
 `docs/design.md` gets implemented — check the date below against
 `git log` if it's been a while.
 
-**Last updated:** 2026-08-14 — Phase 0/1/2 complete, DoD and §6 validation
-gate both passing, real AWS infrastructure + Jenkins live. Sections 1-5
-below (local pipeline) are unchanged from Phase 1; section 6 is new.
+**Last updated:** 2026-08-14 — Phase 0/1/2/3 complete, DoD and §6
+validation gate both passing, real AWS infrastructure + Jenkins +
+`service-api` live. Sections 1-5 below (local pipeline) are unchanged from
+Phase 1; section 6 covers Phase 2's infrastructure; section 7 (new) covers
+Phase 3's deployed API.
 
 ## Prerequisites
 
@@ -170,3 +172,52 @@ aws ssm get-command-invocation --command-id <command-id> --instance-id <id> --re
 If the AWS CLI's own output garbles with `'charmap' codec can't encode`
 errors on Windows, that's a local console-encoding issue, not a remote
 failure — set `PYTHONUTF8=1` first.
+
+## 7. Testing the deployed API (Phase 3)
+
+The real API Gateway URL is published to SSM (not hardcoded — it's an
+apply-specific value):
+
+```
+API_URL=$(aws ssm get-parameter --name /job-syllabus/api/url --region us-west-1 --query Parameter.Value --output text)
+curl "$API_URL/healthz"
+curl "$API_URL/v1/skills?limit=10"
+curl "$API_URL/v1/stats/overview"
+```
+
+`/healthz` and `/readyz` are unauthenticated; everything under `/v1/*` is
+locked to the operator's IP (`internal/api/ipallow.go`, checking the
+`X-Real-Ip` header API Gateway's integration injects from
+`$context.identity.sourceIp` — not the conventional `X-Forwarded-For`,
+which doesn't carry the real client IP through this API Gateway → VPC
+Link → ALB path at all; see `docs/phase-3.md`). Requesting from a
+different IP gets a `403 forbidden` RFC 7807 body.
+
+**Redeploying**: push to `main` with changes under `cmd/**` or
+`internal/**` — `api-build`'s `pollSCM` trigger picks it up within 5
+minutes (a GitHub webhook can't reach this Jenkins; see the Jenkinsfile's
+header comment), or trigger it manually from the Jenkins UI. The pipeline
+builds with Kaniko on a dedicated `kaniko-agent` label, verifies the push
+against ECR directly rather than trusting the build stage's own exit
+status (see `docs/phase-3.md` for why), then deploys and smoke-tests
+automatically.
+
+**If the real DynamoDB table is ever empty** (a fresh `dev-data` apply, or
+after a restore): `cmd/ingest` only supports DynamoDB Local, so populate
+the real table via the same backup/restore pair Phase 2 built for the
+`dev-data` teardown safety net —
+
+```
+make up && make ingest   # populate DynamoDB Local first
+DYNAMODB_ENDPOINT=http://localhost:8000 BACKUP_BUCKET=job-syllabus-data-881811711506 AWS_REGION=us-west-1 go run ./cmd/rollup export
+BACKUP_BUCKET=job-syllabus-data-881811711506 AWS_REGION=us-west-1 go run ./cmd/rollup import
+```
+
+**Diagnosing an API request that 403s unexpectedly**: `ipAllowlist` logs
+the rejected request's actual header values via `slog` — check
+CloudWatch, not just the response body:
+
+```
+aws logs filter-log-events --log-group-name /ecs/job-syllabus --region us-west-1 \
+  --filter-pattern "\"ip allowlist rejected\"" --query 'events[].message' --output text
+```
