@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -48,9 +49,12 @@ func ipAllowlist(allowedCIDR string) func(http.Handler) http.Handler {
 				return
 			}
 
-			clientIP := firstForwardedIP(r.Header.Get("X-Forwarded-For"))
+			xff := r.Header.Get("X-Forwarded-For")
+			clientIP := firstForwardedIP(xff)
 			ip := net.ParseIP(clientIP)
 			if ip == nil || !allowed.Contains(ip) {
+				slog.Warn("api: ip allowlist rejected request",
+					"path", r.URL.Path, "xForwardedFor", xff, "remoteAddr", r.RemoteAddr)
 				writeProblem(w, r, http.StatusForbidden, "forbidden", "")
 				return
 			}
