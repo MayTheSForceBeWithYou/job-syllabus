@@ -2,8 +2,15 @@
 resource "aws_ecr_repository" "app" {
   for_each = toset(var.ecr_repo_names)
 
-  name                 = "${var.project}/${each.value}"
-  image_tag_mutability = "IMMUTABLE" # $GIT_SHA tags per §10's api-build pipeline — never overwrite
+  name = "${var.project}/${each.value}"
+  # Every app image (api, ingest, worker, scraper, rollup) is tagged with
+  # $GIT_SHA per §10's api-build pipeline and stays IMMUTABLE for a real
+  # deploy audit trail. "agent" is different: it's Jenkins's own build
+  # tooling image, always referenced as :latest (ci/jenkins.yaml), and
+  # expected to be rebuilt/repushed under that same tag as the Dockerfile
+  # evolves — an immutable :latest can never be re-pushed at all, which a
+  # real rebuild hit directly ("tag invalid... immutable").
+  image_tag_mutability = each.value == "agent" ? "MUTABLE" : "IMMUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true

@@ -23,6 +23,17 @@ ENV CGO_ENABLED=1
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# golangci-lint — api-build's Lint stage. Confirmed missing against a
+# real CI run: "golangci-lint: not found", exit 127. `go install`, not
+# the project's own shell installer: that script's embedded checksum
+# didn't match its own downloaded binary against a real build (likely a
+# stale/inconsistent CDN artifact) — `go install` sidesteps it entirely
+# since Go's toolchain is already set up in this image.
+# Pinned to match the version used locally (`golangci-lint --version`) —
+# same config schema, same lint results either place.
+RUN go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 \
+    && mv "$(go env GOPATH)/bin/golangci-lint" /usr/local/bin/
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg lsb-release unzip jq \
     && install -m 0755 -d /etc/apt/keyrings \
