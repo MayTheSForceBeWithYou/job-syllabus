@@ -1,10 +1,11 @@
 # How to test what's built so far
 
-This covers what actually works today (`ea09ef6`). It'll grow as more of
+This covers what actually works today (`5becb90`). It'll grow as more of
 `docs/design.md` gets implemented — check the date/commit below against
 `git log` if it's been a while.
 
-**Last updated:** 2026-08-13, commit `ea09ef6` — Phase 0/1 DoD met.
+**Last updated:** 2026-08-13, commit `5becb90` — Phase 0/1 complete, DoD and
+§6 validation gate both passing.
 
 ## Prerequisites
 
@@ -25,11 +26,15 @@ make test    # go test ./...
 changed between v1 and v2, so an older install won't read `.golangci.yml`
 correctly).
 
-`make test` currently only exercises `internal/extract` (heading
-classification, both segmentation paths, and dictionary matching —
-case-sensitivity handling, required-wins-over-nice_to_have, evidence
-truncation). Everything else has no unit tests yet — `internal/connectors`,
-`internal/store`, etc. are only exercised by the live run below.
+`make test` currently only exercises `internal/extract`: heading
+classification, both segmentation paths (including the bold-paragraph
+pseudo-heading pattern), dictionary matching (case-sensitivity handling,
+required-wins-over-nice_to_have, evidence truncation), and the §6
+hand-labeled precision/recall gate (`TestExtractionPrecisionRecall` — 70
+real postings in `testdata/labeled/`, must stay ≥90% precision or the
+build fails; see PROGRESS.md for the current number). Everything else has
+no unit tests yet — `internal/connectors`, `internal/store`, etc. are only
+exercised by the live run below.
 
 ## 2. Bring up DynamoDB Local
 
@@ -67,9 +72,10 @@ upserted, not duplicated. A company timing out or failing shows up as an
 `ERROR` line with elapsed time and the underlying error — it gets skipped,
 not fatal to the whole run. **Watch `skillEdges` per company** — a company
 stuck at 0 while others aren't is the signal that its postings use section
-headings the dictionary matcher isn't recognizing (this is exactly how the
-Epic Games heading bug was found; see PROGRESS.md). `kabam` legitimately
-stays at 0 — that's an accepted, documented gap (NEXT_STEPS.md), not a bug.
+headings (or an HTML structure) the extraction pipeline isn't recognizing.
+This is exactly how the Epic Games and Roblox heading bugs were found; see
+PROGRESS.md. `kabam` legitimately stays at 0 — that's an accepted,
+documented gap (NEXT_STEPS.md), not a bug.
 
 **Env var overrides** (all optional):
 | Var | Default | Purpose |
@@ -91,11 +97,11 @@ computed fresh from every stored `PostingSkill` edge each run:
 
 ```
 === Skill frequency across 70 postings (5 companies) ===
-SKILL                        CATEGORY        COUNT % OF POSTS  REQ'D NICE-TO-HAVE
-Amazon Web Services (AWS)    cloud              12      17.1%      9            3
-Kubernetes                   containers         11      15.7%      8            3
-Google Cloud Platform (GCP)  cloud              10      14.3%      8            2
-C++                          languages           9      12.9%      8            1
+SKILL                        CATEGORY     COUNT % OF POSTS  REQ'D NICE-TO-HAVE
+Amazon Web Services (AWS)    cloud           16      22.9%     12            4
+Kubernetes                   containers      16      22.9%     12            4
+Google Cloud Platform (GCP)  cloud           14      20.0%     11            3
+C++                          languages       13      18.6%     12            1
 ...
 
 41 distinct skills matched across 70 postings

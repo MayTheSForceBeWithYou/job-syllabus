@@ -1,7 +1,7 @@
 # Progress
 
 **Last updated:** 2026-08-13
-**Commit:** `ea09ef6` ("Implement Stage 3 (dictionary matching); DoD met end to end")
+**Commit:** `5becb90` ("Add hand-labeled validation set + precision/recall gate (§6)")
 **Branch:** `main`, matches `origin/main`
 
 This supersedes the earlier Cursor-generated audit in this file, which was
@@ -13,7 +13,10 @@ is the only source of truth.
 
 Scope for this session, per the operator's explicit instruction: Phase 0
 (scaffold) and Phase 1 (local vertical slice) combined, targeting the DoD in
-`docs/design.md` §17.
+`docs/design.md` §17. **Phase 0 and Phase 1 are both complete** — see
+[docs/phase-0.md](docs/phase-0.md) and [docs/phase-1.md](docs/phase-1.md)
+for the full writeups (§0.6 requires these; they're the more detailed
+companion to this file).
 
 ## DoD: met
 
@@ -24,21 +27,27 @@ Scope for this session, per the operator's explicit instruction: Phase 0
 $ make ingest && make report
 ...
 === Skill frequency across 70 postings (5 companies) ===
-SKILL                        CATEGORY        COUNT % OF POSTS  REQ'D NICE-TO-HAVE
-Amazon Web Services (AWS)    cloud              12      17.1%      9            3
-Kubernetes                   containers         11      15.7%      8            3
-Google Cloud Platform (GCP)  cloud              10      14.3%      8            2
-C++                          languages           9      12.9%      8            1
-Go                           languages           8      11.4%      7            1
-Python                       languages           8      11.4%      7            1
-Terraform                    cloud               8      11.4%      3            5
+SKILL                        CATEGORY     COUNT % OF POSTS  REQ'D NICE-TO-HAVE
+Amazon Web Services (AWS)    cloud           16      22.9%     12            4
+Kubernetes                   containers      16      22.9%     12            4
+Google Cloud Platform (GCP)  cloud           14      20.0%     11            3
+C++                          languages       13      18.6%     12            1
+Go                           languages       12      17.1%     11            1
+Python                       languages       12      17.1%     11            1
+Microsoft Azure              cloud           10      14.3%      9            1
 ...
 41 distinct skills matched across 70 postings
 ```
 
 Real postings from Epic Games, Riot Games, Discord, Roblox (Greenhouse) and
 Kabam (Lever) — no mocking, no fixtures. Full pipeline: fetch → role-filter →
-dedupe → normalize → segment → dictionary-match → store → rank.
+dedupe → normalize → segment → dictionary-match → store → rank. Numbers
+above are a live snapshot and will drift run to run as real postings
+open/close.
+
+**Validation gate: passing.** `go test ./internal/extract -run
+TestExtractionPrecisionRecall -v`: 70 hand-labeled postings, **precision
+1.000, recall 0.942** — well clear of §6's 90% precision gate.
 
 ---
 
@@ -77,7 +86,7 @@ dedupe → normalize → segment → dictionary-match → store → rank.
   sub-timeouts on top of a 15s overall `Client.Timeout`.
 - `FetchWithRetry`: up to 2 retries with exponential backoff, `slog`
   WARN/ERROR logging with elapsed time.
-- `internal/config`: loads/validates `data/companies.yaml` and (new)
+- `internal/config`: loads/validates `data/companies.yaml` and
   `data/skills.yaml` at load time — fail fast, not per-item at use time.
 - `internal/dedupe`: URL canonicalization + sha256-derived PostingID/
   ContentHash per §5.
@@ -90,15 +99,15 @@ dedupe → normalize → segment → dictionary-match → store → rank.
   (`INGEST_TIMEOUT`, default 15m) and per-company deadline
   (`COMPANY_TIMEOUT`, default 20s).
 - `report`: prints the real ranked skill-frequency table — count, % of
-  postings, required vs. nice-to-have split, sorted by count.
-- **Verified against real data** (see DoD output above): 617 postings
-  fetched, 70 role-matched and stored, 169 skill edges written, 41
-  distinct skills ranked.
+  postings, required vs. nice-to-have split, sorted by count. Column
+  widths size to the widest actual value each run.
 
 **Extraction pipeline** (`internal/extract`) — Stages 1-3 of 5
 - Stage 1 (Normalize): `htmlToLines` via goquery — strips
   nav/footer/script/style, flattens to `"## heading"` / `"- item"` lines.
-  Unescapes HTML entities first (see postmortem below).
+  Unescapes HTML entities first, and recognizes a `<p>` whose entire
+  content is one `<strong>`/`<b>` child as a pseudo-heading (see
+  postmortems below for why both exist).
 - Stage 2 (Segment): splits on heading markers, classifies each heading
   against ordered cue lists (nice_to_have checked before requirements),
   applies the benefits cutoff. Lever's structured `lists` are used
@@ -114,18 +123,28 @@ dedupe → normalize → segment → dictionary-match → store → rank.
   shipped-title) deliberately not seeded — needs separate structured-fact
   extraction, not dictionary matching.
 - Unit tests cover classification, both HTML/Lever-lists segmentation
-  paths, and dictionary matching (case-sensitivity, required-wins,
-  evidence truncation, requirements-sections-only scope).
+  paths, dictionary matching (case-sensitivity, required-wins, evidence
+  truncation, requirements-sections-only scope), and the pseudo-heading
+  normalize path.
+
+**Validation gate** (`internal/extract/precision_test.go`, §6)
+- 70 hand-labeled real postings in `testdata/labeled/*.json` (exceeds the
+  50-posting target), one hermetic fixture per posting (embedded raw
+  HTML/Lever content — no network or DynamoDB dependency).
+- Ground truth built by reading actual requirement bullets against
+  `data/skills.yaml`, not by trusting the extractor's own output — this is
+  what caught the Roblox pseudo-heading bug (see postmortems).
+- **Result: precision 1.000 (0 false positives / 210 true positives),
+  recall 0.942 (13 false negatives, all from one Kabam posting hand-labeled
+  specifically to make the accepted heading-gap visible in the number
+  rather than defining it away).**
 
 ## Not built yet
 
 - Stage 4 (Bedrock fallback), Stage 5 (review queue).
-- `testdata/labeled/*.json` hand-labeled validation set + the 90%-precision
-  test gate from §6 — not started.
-- `docs/phase-0.md` / `docs/phase-1.md` writeups (§0.6 requires these —
-  next up now that the DoD passes).
 - Everything explicitly out of scope this session: Terraform, Jenkins, auth,
-  Expo/mobile client.
+  Expo/mobile client, role-family classification, `meta`-category
+  structured-fact extraction.
 
 ---
 
@@ -142,28 +161,38 @@ volume-backed `-dbPath`. Separately hardened the whole path (explicit
 sub-timeouts, per-company deadlines, bounded retry, structured logging) so
 this class of failure surfaces in seconds next time, whatever causes it.
 
-**Three bugs only found by testing against live postings, not synthetic
-fixtures — each caught during the actual session, not after:**
+**Four bugs only found by testing against live data, not synthetic
+fixtures or a clean build:**
 1. The benefits-cutoff logic force-classified sections *after* the first
    benefits section to boilerplate, but left the benefits section itself
-   classified as `benefits` — a unit test encoding the reviewed design
-   caught this immediately.
+   classified `benefits` — a unit test encoding the reviewed design caught
+   this immediately.
 2. Greenhouse's `content` field comes back HTML-entity-double-escaped
    (literal `&lt;p&gt;` instead of `<p>`), so the HTML parser saw one giant
    text node with zero real tags and silently returned nothing. Only
    surfaced by running against a real Riot Games posting. Fixed with
    `html.UnescapeString` before parsing.
-3. Epic Games — one of the 5 seed companies — uses "What we're looking
-   for" as its requirements heading, which matched no cue at all. Every
-   single Epic posting contributed zero skills until the first full
-   `make ingest` run showed `skillEdges=0` for that company specifically
-   (all others were non-zero), which is what triggered the investigation.
-   Unlike the already-accepted Kabam heading gap (see NEXT_STEPS.md), this
-   was one well-defined phrase from a major seed company, not open-ended
-   arbitrary phrasing, so it was fixed directly.
+3. Epic Games used "What we're looking for" as its requirements heading,
+   matching no §6 cue. Every Epic posting contributed zero skills until
+   the first full `make ingest` run showed `skillEdges=0` for that company
+   specifically while every other company was non-zero. Fixed directly —
+   a single well-defined phrase from a major seed company, not open-ended
+   arbitrary phrasing.
+4. Roblox used `<p><strong>You Will</strong></p>` — a bolded paragraph,
+   not a semantic heading tag — so Stage 1 never saw a section boundary at
+   all. Found while pulling raw content for hand-labeling, again by
+   noticing roughly half of Roblox's postings had zero detected sections.
+   Fixed by teaching Stage 1 to recognize a `<p>` whose entire content is
+   one bold child as a pseudo-heading. Re-ingesting raised total skill
+   edges from 169 to 210 (Roblox 15→49, Discord 5→12 — both use the
+   pattern).
 
-All three are a concrete argument for "test against real postings, check
-the actual numbers, not just that the code runs without error" — bug #3 in
-particular would have silently produced a DoD-passing report with a whole
-seed company's data missing if the per-company log output hadn't been
-checked line by line.
+All four are the same lesson from different angles: check the actual
+per-company/per-skill numbers, not just "did it run." Bugs #3 and #4 in
+particular would have shipped a DoD-passing report with two of five seed
+companies' data silently near-empty.
+
+**Accepted, not fixed:** Kabam (Lever) uses free-form headings ("In this
+role, you can expect to:") that match nothing, and some Kabam postings are
+in French. Documented in `classifyHeading`'s KNOWN GAP comment and reflected
+honestly in the validation set — see `NEXT_STEPS.md`.
