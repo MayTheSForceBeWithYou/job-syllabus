@@ -83,9 +83,20 @@ pipeline {
                   # end instead of one per Dockerfile instruction — this
                   # Dockerfile only has 2 RUN/COPY pairs, so most of that
                   # per-instruction snapshotting was pure overhead.
+                  #
+                  # --ignore-path=/home/jenkins is load-bearing: our
+                  # Dockerfile is multi-stage (build -> distroless), and
+                  # Kaniko resets the filesystem between stages by
+                  # deleting everything not explicitly protected —
+                  # confirmed against a real run that got much further
+                  # than ever before (past the whole build stage, into
+                  # "Deleting filesystem...") and STILL killed the agent
+                  # connection right there, because /home/jenkins (the
+                  # JNLP process's own workspace and jar cache) isn't in
+                  # Kaniko's own default ignore list.
                   /kaniko/executor --dockerfile=Dockerfile --context="dir://$(pwd)" \
                     --destination="$ECR_REPO:$IMAGE_TAG" --build-arg=BINARY=api --cache=false \
-                    --single-snapshot
+                    --single-snapshot --ignore-path=/home/jenkins
                 '''
             }
         }
