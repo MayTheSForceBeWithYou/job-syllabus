@@ -49,11 +49,18 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
 RUN curl -fsSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
         | sh -s -- -b /usr/local/bin
 
-# tfsec + checkov — infra-plan's security-scanning gates (§10).
+# tfsec + checkov — infra-plan's security-scanning gates (§10). The
+# install script uses bash-only syntax (array += appends) that silently
+# breaks under `sh` (dash on this base image) — confirmed against a real
+# build, which failed with "File to download not supplied" instead of an
+# obvious syntax error.
 RUN curl -fsSL https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh \
-        | sh
+        | bash
+# --ignore-installed is load-bearing: pip otherwise tries to uninstall
+# apt-managed packages (e.g. "packaging") that have no RECORD file for it
+# to work with, and fails outright — confirmed against a real build.
 RUN apt-get update && apt-get install -y --no-install-recommends python3-pip \
-    && pip3 install --no-cache-dir --break-system-packages checkov \
+    && pip3 install --no-cache-dir --break-system-packages --ignore-installed checkov \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip \
