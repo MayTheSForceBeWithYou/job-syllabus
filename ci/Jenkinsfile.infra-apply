@@ -51,7 +51,10 @@ pipeline {
                     sh 'terraform init'
                     sh 'terraform plan -out=tfplan -detailed-exitcode || true'
                     sh 'terraform show -no-color tfplan > tfplan.txt'
-                    archiveArtifacts artifacts: 'infra/terraform/envs/dev-compute/tfplan.txt', fingerprint: true
+                    // Relative to this dir() block, not the workspace root
+                    // — the doubled prefix here failed a real run outright
+                    // ("doesn't match anything, but 'tfplan.txt' does").
+                    archiveArtifacts artifacts: 'tfplan.txt', fingerprint: true
                 }
             }
         }
