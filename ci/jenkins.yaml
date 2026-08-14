@@ -38,6 +38,14 @@ jenkins:
           - templateName: "fargate-agent"
             label: "fargate-agent"
             image: "${AGENT_ECR_REPO_URL}:latest"
+            # Left unset, the plugin can't name the container in its ECS
+            # RunTask override (ContainerOverride.withName(null)), and AWS
+            # rejects the call outright: "InvalidParameterException:
+            # Override argument cannot be null." Confirmed against a real
+            # boot — every agent provisioning attempt failed this way, so
+            # no build could ever get an executor. See
+            # https://github.com/jenkinsci/amazon-ecs-plugin/issues/319.
+            agentContainerName: "jenkins-agent"
             launchType: "FARGATE"
             operatingSystemFamily: "LINUX"
             cpu: "1024"
