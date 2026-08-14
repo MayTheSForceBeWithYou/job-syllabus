@@ -48,7 +48,21 @@ resource "aws_ecs_service" "worker" {
   cluster         = var.ecs_cluster_id
   task_definition = aws_ecs_task_definition.worker.arn
   desired_count   = var.min_capacity
-  launch_type     = "FARGATE"
+
+  # Fargate Spot, not on-demand launch_type="FARGATE" (unlike service-api,
+  # which needs on-demand for a steady-availability HTTP endpoint) —
+  # docs/design.md §9 sizing table calls this out specifically: "Fargate
+  # Spot recommended for worker/scraper specifically (~70% cheaper,
+  # interruption-tolerant)." A worker task killed mid-extraction by a Spot
+  # interruption just means its in-flight SQS message becomes visible
+  # again after the visibility timeout and gets picked up by another task
+  # — the same at-least-once redelivery path PutSkillEdge's idempotent
+  # TransactWriteItems already has to tolerate, so an interruption costs
+  # nothing beyond a brief delay.
+  capacity_provider_strategy {
+    capacity_provider = "FARGATE_SPOT"
+    weight            = 1
+  }
 
   network_configuration {
     subnets          = var.public_subnet_ids
