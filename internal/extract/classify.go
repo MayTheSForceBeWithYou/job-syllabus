@@ -37,6 +37,10 @@ var (
 		// way) but keeps the section's evidence/debugging view honest
 		// instead of dumping it in boilerplate.
 		"in this role",
+		// "you will" added from a real Roblox posting's "You Will" heading
+		// (same evidence-quality rationale, same non-effect on extraction
+		// scope).
+		"you will",
 	}
 	benefitsCues = []string{
 		"benefits", "benefit", "perks", "compensation", "we offer", "equal opportunity", "eeo",

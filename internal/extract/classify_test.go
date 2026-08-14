@@ -14,6 +14,8 @@ func TestClassifyHeading(t *testing.T) {
 		{"Desired Qualifications:", SectionNiceToHave},  // real-world variant found via a live Riot Games posting
 		{"What we're looking for", SectionRequirements}, // real-world variant found via a live Epic Games posting
 		{"In this role, you will", SectionResponsibilities},
+		{"You Have", SectionRequirements},     // real-world variant found via a live Roblox posting
+		{"You Will", SectionResponsibilities}, // same posting
 		{"Nice to Have", SectionNiceToHave},
 		{"Bonus Points", SectionNiceToHave},
 		{"Responsibilities", SectionResponsibilities},

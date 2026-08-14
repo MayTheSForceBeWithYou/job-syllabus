@@ -27,6 +27,61 @@ const samplePostingHTML = `
   <p>We do not discriminate.</p>
 </div>`
 
+// samplePostingBoldHeadings mirrors a real Roblox posting structure: no
+// semantic <h*> tags for the requirements/nice-to-have split at all, just
+// bolded paragraphs (<p><strong>...</strong></p>).
+const samplePostingBoldHeadings = `
+<div>
+  <p>Some intro copy about the team.</p>
+  <h3>Senior Engineer, Platform</h3>
+  <p>Role description paragraph.</p>
+  <p><strong>You Will</strong></p>
+  <ul><li>Own the deployment pipeline</li></ul>
+  <p><strong>You Have</strong></p>
+  <ul>
+    <li>Experience with Kubernetes</li>
+    <li>Proficiency in Go</li>
+  </ul>
+  <p>This paragraph <strong>starts</strong> with bold but isn't a heading.</p>
+</div>`
+
+func TestSegmentPosting_BoldParagraphPseudoHeadings(t *testing.T) {
+	rp := connectors.RawPosting{BodyHTML: samplePostingBoldHeadings}
+
+	sections, err := SegmentPosting(rp)
+	if err != nil {
+		t.Fatalf("SegmentPosting: %v", err)
+	}
+
+	var youHave *Section
+	for i := range sections {
+		if sections[i].Heading == "You Have" {
+			youHave = &sections[i]
+		}
+	}
+	if youHave == nil {
+		t.Fatalf("expected a 'You Have' section from the bolded paragraph; got sections: %+v", sections)
+	}
+	if youHave.Kind != SectionRequirements {
+		t.Errorf("'You Have' kind = %q, want requirements", youHave.Kind)
+	}
+	if len(youHave.Lines) < 2 {
+		t.Errorf("'You Have' lines = %v, want at least 2 bullets", youHave.Lines)
+	}
+	if youHave.Lines[0] != "- Experience with Kubernetes" || youHave.Lines[1] != "- Proficiency in Go" {
+		t.Errorf("unexpected 'You Have' bullets: %v", youHave.Lines)
+	}
+
+	// The paragraph that merely starts with bold text must NOT be split
+	// into its own heading section — it should fold into "You Have" as
+	// plain content instead (confirmed above: 3 lines, not 2).
+	for _, s := range sections {
+		if s.Heading == "starts" || s.Heading == "This paragraph" {
+			t.Errorf("partially-bold paragraph was wrongly treated as a heading: %+v", s)
+		}
+	}
+}
+
 func TestSegmentPosting_HTMLBenefitsCutoff(t *testing.T) {
 	rp := connectors.RawPosting{BodyHTML: samplePostingHTML}
 

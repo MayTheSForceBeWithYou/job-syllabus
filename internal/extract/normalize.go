@@ -55,9 +55,44 @@ func htmlToLines(rawHTML string) ([]string, error) {
 			lines = append(lines, "## "+text)
 		case "li":
 			lines = append(lines, "- "+text)
-		default:
-			lines = append(lines, text)
+		default: // p
+			if headingText, ok := pseudoHeadingText(sel, text); ok {
+				lines = append(lines, "## "+headingText)
+			} else {
+				lines = append(lines, text)
+			}
 		}
 	})
 	return lines, nil
+}
+
+const maxPseudoHeadingLen = 80
+
+// pseudoHeadingText recognizes a <p> whose entire content is a single
+// <strong>/<b> child — e.g. `<p><strong>You Will</strong></p>` — as a
+// heading line, the same way a real <h1>-<h6> is. Confirmed against a real
+// Roblox posting: Roblox uses exactly this pattern instead of semantic
+// heading tags, so without this the whole body collapsed into one
+// unclassified block and Stage 2 never saw a section boundary at all.
+//
+// Guarded two ways against false positives: the bold child must be the
+// paragraph's ONLY content (no surrounding text — a paragraph that merely
+// starts with a bolded word keeps going as a normal paragraph), and the
+// text must be short (<=80 chars) so a fully-bolded multi-sentence
+// paragraph doesn't get mistaken for a heading.
+func pseudoHeadingText(sel *goquery.Selection, fullText string) (string, bool) {
+	children := sel.Children()
+	if children.Length() != 1 {
+		return "", false
+	}
+	child := children.First()
+	tag := goquery.NodeName(child)
+	if tag != "strong" && tag != "b" {
+		return "", false
+	}
+	childText := collapseWhitespace(child.Text())
+	if childText == "" || childText != fullText || len(childText) > maxPseudoHeadingLen {
+		return "", false
+	}
+	return childText, true
 }
