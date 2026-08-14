@@ -1,0 +1,407 @@
+# Canonical skill dictionary — docs/design.md §6 taxonomy. Not exhaustive:
+# this is a Phase 1 seed covering the categories with representative real
+# entries, not the 250-400 skills the doc expects by month 3. Add entries as
+# real postings surface terms this misses.
+#
+# Schema: id (unique slug), display (UI name), category, aliases (matched
+# case-insensitively on word boundaries), patterns (raw regex, used as-is —
+# the escape hatch for tokens \b handles badly, like "C++" or where case
+# matters, like bare "Go"). Every entry needs at least one alias or pattern.
+#
+# The `meta` category from §6 (years of experience, degree requirement,
+# shipped-title requirement, on-site/hybrid) is deliberately NOT seeded
+# here — those are structured facts to extract separately, not skills a
+# dictionary pass should match, and that extraction isn't built yet.
+
+# --- vcs ---
+- id: perforce
+  display: Perforce (Helix Core)
+  category: vcs
+  aliases: ["Perforce", "Helix Core", "P4V", "P4"]
+- id: git
+  display: Git
+  category: vcs
+  aliases: ["Git"]
+- id: git-lfs
+  display: Git LFS
+  category: vcs
+  aliases: ["Git LFS", "Git Large File Storage"]
+- id: plastic-scm
+  display: Plastic SCM
+  category: vcs
+  aliases: ["Plastic SCM", "Unity VCS"]
+- id: subversion
+  display: Subversion (SVN)
+  category: vcs
+  aliases: ["Subversion", "SVN"]
+
+# --- build_system ---
+- id: unreal-build-tool
+  display: Unreal Build Tool (UBT)
+  category: build_system
+  aliases: ["Unreal Build Tool", "UBT"]
+- id: buildgraph
+  display: BuildGraph
+  category: build_system
+  aliases: ["BuildGraph"]
+- id: unreal-automation-tool
+  display: Unreal Automation Tool (UAT)
+  category: build_system
+  aliases: ["Unreal Automation Tool", "UAT"]
+- id: unreal-horde
+  display: Unreal Horde
+  category: build_system
+  aliases: ["Unreal Horde", "Horde"]
+- id: bazel
+  display: Bazel
+  category: build_system
+  aliases: ["Bazel"]
+- id: cmake
+  display: CMake
+  category: build_system
+  aliases: ["CMake"]
+- id: msbuild
+  display: MSBuild
+  category: build_system
+  aliases: ["MSBuild"]
+- id: scons
+  display: SCons
+  category: build_system
+  aliases: ["SCons"]
+- id: fastbuild
+  display: FASTBuild
+  category: build_system
+  aliases: ["FASTBuild"]
+- id: incredibuild
+  display: Incredibuild
+  category: build_system
+  aliases: ["Incredibuild"]
+
+# --- ci_cd ---
+- id: jenkins
+  display: Jenkins
+  category: ci_cd
+  aliases: ["Jenkins"]
+- id: teamcity
+  display: TeamCity
+  category: ci_cd
+  aliases: ["TeamCity"]
+- id: github-actions
+  display: GitHub Actions
+  category: ci_cd
+  aliases: ["GitHub Actions"]
+- id: gitlab-ci
+  display: GitLab CI
+  category: ci_cd
+  aliases: ["GitLab CI", "GitLab CI/CD"]
+- id: buildkite
+  display: Buildkite
+  category: ci_cd
+  aliases: ["Buildkite"]
+- id: circleci
+  display: CircleCI
+  category: ci_cd
+  aliases: ["CircleCI"]
+- id: azure-devops
+  display: Azure DevOps
+  category: ci_cd
+  aliases: ["Azure DevOps"]
+- id: bamboo
+  display: Bamboo
+  category: ci_cd
+  aliases: ["Bamboo"]
+
+# --- cloud ---
+- id: aws
+  display: Amazon Web Services (AWS)
+  category: cloud
+  aliases: ["AWS", "Amazon Web Services"]
+- id: gcp
+  display: Google Cloud Platform (GCP)
+  category: cloud
+  aliases: ["GCP", "Google Cloud Platform", "Google Cloud"]
+- id: azure
+  display: Microsoft Azure
+  category: cloud
+  aliases: ["Azure"]
+- id: ec2
+  display: Amazon EC2
+  category: cloud
+  aliases: ["EC2"]
+- id: s3
+  display: Amazon S3
+  category: cloud
+  aliases: ["Amazon S3"]
+  patterns: ['\bS3\b']
+- id: lambda
+  display: AWS Lambda
+  category: cloud
+  aliases: ["AWS Lambda"]
+  patterns: ['\bLambda\b']
+- id: ecs
+  display: Amazon ECS
+  category: cloud
+  aliases: ["Amazon ECS", "Elastic Container Service"]
+  patterns: ['\bECS\b']
+- id: eks
+  display: Amazon EKS
+  category: cloud
+  aliases: ["Amazon EKS", "Elastic Kubernetes Service"]
+  patterns: ['\bEKS\b']
+- id: gamelift
+  display: Amazon GameLift
+  category: cloud
+  aliases: ["GameLift"]
+- id: cloudformation
+  display: AWS CloudFormation
+  category: cloud
+  aliases: ["CloudFormation"]
+- id: terraform
+  display: Terraform
+  category: cloud
+  aliases: ["Terraform"]
+- id: pulumi
+  display: Pulumi
+  category: cloud
+  aliases: ["Pulumi"]
+- id: ansible
+  display: Ansible
+  category: cloud
+  aliases: ["Ansible"]
+
+# --- containers ---
+- id: docker
+  display: Docker
+  category: containers
+  aliases: ["Docker"]
+- id: kubernetes
+  display: Kubernetes
+  category: containers
+  aliases: ["Kubernetes", "K8s"]
+- id: agones
+  display: Agones
+  category: containers
+  aliases: ["Agones"]
+- id: helm
+  display: Helm
+  category: containers
+  aliases: ["Helm"]
+
+# --- languages ---
+# C++, C#, .NET, and Go all need the `patterns` escape hatch rather than
+# plain aliases — see §6 and the CompileSkills doc comment. \b doesn't
+# reliably bound tokens ending in punctuation (++, #), and bare "go"/"Go"
+# collides with the common verb, so it's matched case-sensitively only.
+- id: cpp
+  display: C++
+  category: languages
+  patterns: ['(^|[^\w+])C\+\+([^\w+]|$)']
+- id: csharp
+  display: C#
+  category: languages
+  patterns: ['(^|[^\w#])C#([^\w#]|$)']
+- id: dotnet
+  display: .NET
+  category: languages
+  patterns: ['(^|[^\w.])\.NET([^\w.]|$)']
+- id: python
+  display: Python
+  category: languages
+  aliases: ["Python"]
+- id: go-lang
+  display: Go
+  category: languages
+  patterns: ['(?-i)\bGo\b']
+- id: rust
+  display: Rust
+  category: languages
+  aliases: ["Rust"]
+- id: bash
+  display: Bash
+  category: languages
+  aliases: ["Bash", "Shell scripting"]
+- id: powershell
+  display: PowerShell
+  category: languages
+  aliases: ["PowerShell"]
+- id: typescript
+  display: TypeScript
+  category: languages
+  aliases: ["TypeScript"]
+- id: lua
+  display: Lua
+  category: languages
+  aliases: ["Lua"]
+
+# --- engines ---
+- id: unreal-engine
+  display: Unreal Engine
+  category: engines
+  aliases: ["Unreal Engine", "UE4", "UE5"]
+- id: unity
+  display: Unity
+  category: engines
+  aliases: ["Unity"]
+- id: godot
+  display: Godot
+  category: engines
+  aliases: ["Godot"]
+
+# --- platforms ---
+- id: playstation-5
+  display: PlayStation 5
+  category: platforms
+  aliases: ["PlayStation 5", "PS5"]
+- id: xbox-series
+  display: Xbox Series X/S
+  category: platforms
+  aliases: ["Xbox Series"]
+- id: nintendo-switch
+  display: Nintendo Switch
+  category: platforms
+  aliases: ["Nintendo Switch"]
+- id: steam
+  display: Steam / SteamPipe
+  category: platforms
+  aliases: ["Steam", "SteamPipe", "Steamworks"]
+- id: epic-games-store
+  display: Epic Games Store
+  category: platforms
+  aliases: ["Epic Games Store", "EGS"]
+
+# --- liveops ---
+- id: playfab
+  display: PlayFab
+  category: liveops
+  aliases: ["PlayFab"]
+- id: nakama
+  display: Nakama
+  category: liveops
+  aliases: ["Nakama"]
+- id: accelbyte
+  display: AccelByte
+  category: liveops
+  aliases: ["AccelByte"]
+- id: firebase
+  display: Firebase
+  category: liveops
+  aliases: ["Firebase"]
+
+# --- data ---
+- id: postgres
+  display: PostgreSQL
+  category: data
+  aliases: ["PostgreSQL", "Postgres"]
+- id: mysql
+  display: MySQL
+  category: data
+  aliases: ["MySQL"]
+- id: redis
+  display: Redis
+  category: data
+  aliases: ["Redis"]
+- id: dynamodb
+  display: DynamoDB
+  category: data
+  aliases: ["DynamoDB"]
+- id: kafka
+  display: Apache Kafka
+  category: data
+  aliases: ["Kafka"]
+- id: snowflake
+  display: Snowflake
+  category: data
+  aliases: ["Snowflake"]
+- id: bigquery
+  display: BigQuery
+  category: data
+  aliases: ["BigQuery"]
+
+# --- observability ---
+- id: datadog
+  display: Datadog
+  category: observability
+  aliases: ["Datadog"]
+- id: grafana
+  display: Grafana
+  category: observability
+  aliases: ["Grafana"]
+- id: prometheus
+  display: Prometheus
+  category: observability
+  aliases: ["Prometheus"]
+- id: splunk
+  display: Splunk
+  category: observability
+  aliases: ["Splunk"]
+- id: sentry
+  display: Sentry
+  category: observability
+  aliases: ["Sentry"]
+- id: opentelemetry
+  display: OpenTelemetry
+  category: observability
+  aliases: ["OpenTelemetry", "OTel"]
+
+# --- security ---
+- id: iam
+  display: IAM
+  category: security
+  aliases: ["IAM", "Identity and Access Management"]
+- id: secrets-management
+  display: Secrets management
+  category: security
+  aliases: ["secrets management", "secrets manager"]
+- id: code-signing
+  display: Code signing
+  category: security
+  aliases: ["code signing"]
+- id: sast-dast
+  display: SAST/DAST
+  category: security
+  aliases: ["SAST", "DAST"]
+
+# --- build_infra ---
+- id: derived-data-cache
+  display: Derived Data Cache (DDC)
+  category: build_infra
+  aliases: ["Derived Data Cache", "DDC"]
+- id: artifactory
+  display: Artifactory
+  category: build_infra
+  aliases: ["Artifactory"]
+- id: symbol-server
+  display: Symbol server
+  category: build_infra
+  aliases: ["symbol server"]
+
+# --- practices ---
+- id: agile
+  display: Agile
+  category: practices
+  aliases: ["Agile"]
+- id: scrum
+  display: Scrum
+  category: practices
+  aliases: ["Scrum"]
+- id: on-call
+  display: On-call
+  category: practices
+  aliases: ["on-call", "on call"]
+- id: incident-response
+  display: Incident response
+  category: practices
+  aliases: ["incident response"]
+- id: sre
+  display: Site Reliability Engineering (SRE)
+  category: practices
+  aliases: ["Site Reliability Engineering"]
+  patterns: ['\bSRE\b']
+- id: postmortems
+  display: Postmortems
+  category: practices
+  aliases: ["postmortem", "postmortems", "post-mortem"]
+- id: code-review
+  display: Code review
+  category: practices
+  aliases: ["code review"]

@@ -1,7 +1,7 @@
 // cmd/ingest fetches postings from every company in data/companies.yaml via
-// their registered ATS connector and persists them to DynamoDB Local. It
-// also carries the (currently posting-count-only) `report` subcommand,
-// pending the extraction pipeline from docs/design.md §6.
+// their registered ATS connector, extracts skills (docs/design.md §6
+// Stages 1-3), and persists both to DynamoDB Local. `report` prints the
+// ranked skill-frequency table — the actual DoD deliverable.
 //
 // Usage:
 //
@@ -23,6 +23,7 @@ import (
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/config"
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/connectors"
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/dedupe"
+	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/extract"
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/model"
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/store"
 )
@@ -90,6 +91,7 @@ func envDuration(key string, fallback time.Duration) time.Duration {
 
 func runIngest(ctx context.Context, s *store.Store, logger *slog.Logger) {
 	companiesPath := envOr("COMPANIES_FILE", "data/companies.yaml")
+	skillsPath := envOr("SKILLS_FILE", "data/skills.yaml")
 	companyTimeout := envDuration("COMPANY_TIMEOUT", 20*time.Second)
 
 	httpClient := connectors.NewDefaultHTTPClient()
@@ -99,10 +101,19 @@ func runIngest(ctx context.Context, s *store.Store, logger *slog.Logger) {
 	if err != nil {
 		log.Fatalf("load %s: %v", companiesPath, err)
 	}
-	logger.Info("ingest run starting", "companies", len(companies), "companyTimeout", companyTimeout.String())
+
+	rawSkills, err := config.LoadSkills(skillsPath)
+	if err != nil {
+		log.Fatalf("load %s: %v", skillsPath, err)
+	}
+	skills, err := extract.CompileSkills(rawSkills)
+	if err != nil {
+		log.Fatalf("compile %s: %v", skillsPath, err)
+	}
+	logger.Info("ingest run starting", "companies", len(companies), "skills", len(skills), "companyTimeout", companyTimeout.String())
 
 	now := time.Now().UTC()
-	var totalFetched, totalMatched, totalCreated, totalUpdated, totalSkipped int
+	var totalFetched, totalMatched, totalCreated, totalUpdated, totalSkipped, totalSkillEdges int
 
 	for i, c := range companies {
 		logger.Info("company starting", "index", i+1, "of", len(companies), "company", c.Slug, "ats", c.ATS)
@@ -130,14 +141,14 @@ func runIngest(ctx context.Context, s *store.Store, logger *slog.Logger) {
 		matched := filterByRole(raw, c.RoleFilters)
 		totalMatched += len(matched)
 
-		var created, updated int
+		var created, updated, skillEdges int
 		for _, rp := range matched {
 			posting, err := toPosting(c, rp, now)
 			if err != nil {
 				logger.Warn("skipping unparseable posting", "company", c.Slug, "externalId", rp.ExternalID, "error", err.Error())
 				continue
 			}
-			wasCreated, err := s.UpsertPosting(ctx, posting)
+			stored, wasCreated, err := s.UpsertPosting(ctx, posting)
 			if err != nil {
 				logger.Warn("failed to store posting", "company", c.Slug, "postingId", posting.ID, "error", err.Error())
 				continue
@@ -147,18 +158,51 @@ func runIngest(ctx context.Context, s *store.Store, logger *slog.Logger) {
 			} else {
 				updated++
 			}
+
+			n, err := extractAndStoreSkills(ctx, s, stored, rp, skills)
+			if err != nil {
+				logger.Warn("extraction failed", "company", c.Slug, "postingId", stored.ID, "error", err.Error())
+				continue
+			}
+			skillEdges += n
 		}
 		totalCreated += created
 		totalUpdated += updated
+		totalSkillEdges += skillEdges
 
 		logger.Info("company complete", "company", c.Slug,
-			"fetched", len(raw), "roleMatched", len(matched), "new", created, "updated", updated)
+			"fetched", len(raw), "roleMatched", len(matched), "new", created, "updated", updated, "skillEdges", skillEdges)
 	}
 
 	logger.Info("ingest run complete",
 		"companies", len(companies), "skipped", totalSkipped,
 		"fetched", totalFetched, "roleMatched", totalMatched,
-		"new", totalCreated, "updated", totalUpdated)
+		"new", totalCreated, "updated", totalUpdated, "skillEdges", totalSkillEdges)
+}
+
+// extractAndStoreSkills runs Stages 1-3 (normalize, segment, dictionary
+// match) on a freshly-upserted posting, writes the resulting PostingSkill
+// edges, and stamps ExtractVer/SkillCount onto the stored posting. Returns
+// the number of skills matched.
+func extractAndStoreSkills(ctx context.Context, s *store.Store, stored model.Posting, rp connectors.RawPosting, skills []extract.CompiledSkill) (int, error) {
+	sections, err := extract.SegmentPosting(rp)
+	if err != nil {
+		return 0, fmt.Errorf("segment: %w", err)
+	}
+
+	matches := extract.MatchSkills(stored.ID, sections, skills)
+	for _, m := range matches {
+		if err := s.PutSkillEdge(ctx, m); err != nil {
+			return 0, fmt.Errorf("store skill edge %s: %w", m.SkillID, err)
+		}
+	}
+
+	stored.ExtractVer = extract.Version
+	stored.SkillCount = len(matches)
+	if err := s.PutPosting(ctx, stored); err != nil {
+		return 0, fmt.Errorf("update posting extraction fields: %w", err)
+	}
+	return len(matches), nil
 }
 
 // filterByRole keeps postings whose title contains any of the company's
@@ -212,34 +256,87 @@ func toPosting(c connectors.CompanyConfig, rp connectors.RawPosting, now time.Ti
 	}, nil
 }
 
+type skillRow struct {
+	display    string
+	category   string
+	count      int
+	required   int
+	niceToHave int
+}
+
 func runReport(ctx context.Context, s *store.Store) {
 	postings, err := s.ListAllPostings(ctx)
 	if err != nil {
 		log.Fatalf("list postings: %v", err)
 	}
-
 	if len(postings) == 0 {
 		fmt.Println("No postings in the store yet — run `make ingest` first.")
 		return
 	}
 
-	byCompany := map[string]int{}
+	edges, err := s.ListAllSkillEdges(ctx)
+	if err != nil {
+		log.Fatalf("list skill edges: %v", err)
+	}
+
+	skillsPath := envOr("SKILLS_FILE", "data/skills.yaml")
+	rawSkills, err := config.LoadSkills(skillsPath)
+	if err != nil {
+		log.Fatalf("load %s: %v", skillsPath, err)
+	}
+	displayByID := make(map[string]model.Skill, len(rawSkills))
+	for _, sk := range rawSkills {
+		displayByID[sk.ID] = sk
+	}
+
+	rows := make(map[string]*skillRow)
+	for _, e := range edges {
+		row, ok := rows[e.SkillID]
+		if !ok {
+			sk := displayByID[e.SkillID]
+			row = &skillRow{display: sk.Display, category: sk.Category}
+			if row.display == "" {
+				row.display = e.SkillID // skills.yaml changed since this edge was written
+			}
+			rows[e.SkillID] = row
+		}
+		row.count++
+		if e.Required {
+			row.required++
+		} else {
+			row.niceToHave++
+		}
+	}
+
+	ids := make([]string, 0, len(rows))
+	for id := range rows {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		if rows[ids[i]].count != rows[ids[j]].count {
+			return rows[ids[i]].count > rows[ids[j]].count
+		}
+		return ids[i] < ids[j] // stable tie-break
+	})
+
+	fmt.Printf("=== Skill frequency across %d postings (%d companies) ===\n", len(postings), countCompanies(postings))
+	fmt.Printf("%-28s %-14s %6s %10s %6s %12s\n", "SKILL", "CATEGORY", "COUNT", "% OF POSTS", "REQ'D", "NICE-TO-HAVE")
+	for _, id := range ids {
+		r := rows[id]
+		pct := float64(r.count) / float64(len(postings)) * 100
+		fmt.Printf("%-28s %-14s %6d %9.1f%% %6d %12d\n", r.display, r.category, r.count, pct, r.required, r.niceToHave)
+	}
+
+	if len(rows) == 0 {
+		fmt.Println("(no skills matched — every posting's requirements/nice_to_have sections came up empty; see NEXT_STEPS.md's heading-classification note)")
+	}
+	fmt.Printf("\n%d distinct skills matched across %d postings\n", len(rows), len(postings))
+}
+
+func countCompanies(postings []model.Posting) int {
+	seen := map[string]bool{}
 	for _, p := range postings {
-		byCompany[p.CompanySlug]++
+		seen[p.CompanySlug] = true
 	}
-
-	companies := make([]string, 0, len(byCompany))
-	for c := range byCompany {
-		companies = append(companies, c)
-	}
-	sort.Slice(companies, func(i, j int) bool { return byCompany[companies[i]] > byCompany[companies[j]] })
-
-	fmt.Println("=== Posting counts by company (interim — skill ranking pending extraction pipeline) ===")
-	for _, c := range companies {
-		fmt.Printf("%-24s %d\n", c, byCompany[c])
-	}
-	fmt.Printf("\ntotal postings: %d across %d companies\n", len(postings), len(companies))
-	fmt.Println("\nNOTE: the ranked skill-frequency table (the actual DoD deliverable) requires")
-	fmt.Println("the extraction pipeline (docs/design.md §6), which is pending the segmentation")
-	fmt.Println("heuristics checkpoint. This report will be replaced once that lands.")
+	return len(seen)
 }

@@ -22,9 +22,21 @@ var (
 	requirementsCues = []string{
 		"requirements", "requirement", "qualifications", "qualification",
 		"what you'll need", "you have", "minimum", "basic qualifications",
+		// "what we're looking for" / "what we are looking for" added after
+		// EVERY Epic Games posting (one of the 5 seed companies) used this
+		// as its requirements heading — not a §6 cue, not a rare variant,
+		// and it zeroed out skill extraction for an entire seed company
+		// until found via a live run's report showing 0 skillEdges.
+		"what we're looking for", "what we are looking for",
 	}
 	responsibilitiesCues = []string{
 		"responsibilities", "responsibility", "what you'll do", "the role", "about the role",
+		// "in this role" added alongside the fix above, from the same Epic
+		// Games postings ("In this role, you will"). Doesn't affect skill
+		// extraction (RequirementSections excludes responsibilities either
+		// way) but keeps the section's evidence/debugging view honest
+		// instead of dumping it in boilerplate.
+		"in this role",
 	}
 	benefitsCues = []string{
 		"benefits", "benefit", "perks", "compensation", "we offer", "equal opportunity", "eeo",

@@ -12,6 +12,8 @@ func TestClassifyHeading(t *testing.T) {
 		{"What You'll Need", SectionRequirements},
 		{"Preferred Qualifications", SectionNiceToHave}, // must not fall into requirements
 		{"Desired Qualifications:", SectionNiceToHave},  // real-world variant found via a live Riot Games posting
+		{"What we're looking for", SectionRequirements}, // real-world variant found via a live Epic Games posting
+		{"In this role, you will", SectionResponsibilities},
 		{"Nice to Have", SectionNiceToHave},
 		{"Bonus Points", SectionNiceToHave},
 		{"Responsibilities", SectionResponsibilities},

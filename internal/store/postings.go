@@ -85,15 +85,21 @@ func (s *Store) PutPosting(ctx context.Context, p model.Posting) error {
 // UpsertPosting implements the ingest dedup rule from docs/design.md §5: a
 // posting seen before keeps its FirstSeenAt and just advances LastSeenAt
 // (and ContentHash/ExtractVer if the content changed); a new posting is
-// inserted as-is. Returns whether this was a newly-created posting.
-func (s *Store) UpsertPosting(ctx context.Context, p model.Posting) (created bool, err error) {
+// inserted as-is. Returns the final stored posting (so callers can layer
+// extraction results — ExtractVer, SkillCount — on top of the correct
+// FirstSeenAt/etc. rather than the caller's pre-upsert draft) and whether
+// this was a newly-created posting.
+func (s *Store) UpsertPosting(ctx context.Context, p model.Posting) (stored model.Posting, created bool, err error) {
 	existing, err := s.GetPosting(ctx, p.ID)
 	if err != nil {
-		return false, err
+		return model.Posting{}, false, err
 	}
 	if existing == nil {
 		p.FirstSeenAt = p.LastSeenAt
-		return true, s.PutPosting(ctx, p)
+		if err := s.PutPosting(ctx, p); err != nil {
+			return model.Posting{}, false, err
+		}
+		return p, true, nil
 	}
 
 	existing.LastSeenAt = p.LastSeenAt
@@ -102,9 +108,12 @@ func (s *Store) UpsertPosting(ctx context.Context, p model.Posting) (created boo
 	existing.URL = p.URL
 	if existing.ContentHash != p.ContentHash {
 		existing.ContentHash = p.ContentHash
-		existing.ExtractVer = 0 // force re-extraction once the pipeline exists
+		existing.ExtractVer = 0 // force re-extraction; content changed
 	}
-	return false, s.PutPosting(ctx, *existing)
+	if err := s.PutPosting(ctx, *existing); err != nil {
+		return model.Posting{}, false, err
+	}
+	return *existing, false, nil
 }
 
 // ErrNotFound is returned by lookups that expect the item to exist.
