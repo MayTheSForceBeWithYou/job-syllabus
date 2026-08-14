@@ -2,10 +2,11 @@
 // `jobs:` block, so these jobs exist from the very first boot, before
 // anyone touches the UI.
 //
-// Only api-build, infra-plan, and infra-apply are defined here — the
-// pipeline table in §10 also lists client-build (needs the Expo app,
-// Phase 6), backfill and reextract (need the queue-driven ingestion from
-// Phase 4). Add those jobs here when their phases land, not before.
+// api-build, worker-build, infra-plan, infra-apply, and backfill are
+// defined here as of Phase 4 — the pipeline table in §10 also lists
+// client-build (needs the Expo app, Phase 6) and reextract (needs
+// ExtractVer-driven re-enqueueing, not yet built — see NEXT_STEPS.md).
+// Add those jobs here when their phases land, not before.
 //
 // infra-plan is a simple push-triggered pipelineJob, not a full
 // multibranch/PR-discovery job — §10 describes it as "PR touching
@@ -38,6 +39,40 @@ pipelineJob('api-build') {
         // declarative Jenkinsfile's triggers{} only takes over syncing
         // the job config starting from the second run).
         scm('H/5 * * * *')
+    }
+}
+
+pipelineJob('worker-build') {
+    description('docs/design.md §9/§10: go vet -> golangci-lint -> go test -race -cover -> extraction validation gate -> build -> Trivy -> ECR push ($GIT_SHA) -> ecs update-service -> smoke test (force a task up, confirm its startup log line)')
+    definition {
+        cpsScm {
+            scm {
+                git {
+                    remote { url(repoUrl) }
+                    branch('*/main')
+                }
+            }
+            scriptPath('ci/Jenkinsfile.worker-build')
+        }
+    }
+    triggers {
+        // Same rationale as api-build's trigger — see that job's comment.
+        scm('H/5 * * * *')
+    }
+}
+
+pipelineJob('backfill') {
+    description('docs/design.md §5: on-demand re-ingest of a single company (COMPANY_SLUG param) without waiting for the daily 06:00 UTC schedule. Manual only.')
+    definition {
+        cpsScm {
+            scm {
+                git {
+                    remote { url(repoUrl) }
+                    branch('*/main')
+                }
+            }
+            scriptPath('ci/Jenkinsfile.backfill')
+        }
     }
 }
 

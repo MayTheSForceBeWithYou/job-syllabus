@@ -1,0 +1,155 @@
+// docs/design.md §10/§9: push to main
+//   go vet -> golangci-lint -> go test -race -cover -> extraction
+//   validation gate -> build (multi-stage -> distroless) -> Trivy
+//   (fail on HIGH+) -> ECR push tagged $GIT_SHA -> ecs update-service
+//   -> poll stability -> smoke test (force a task up, confirm it boots)
+//
+// Mirrors ci/Jenkinsfile.api-build's structure and hard-won Kaniko
+// workarounds (see that file's Build image stage for the full story:
+// dedicated kaniko-agent, returnStatus + ECR-verify since Kaniko's own
+// between-stage filesystem reset breaks the Durable Task Plugin's
+// completion signal even on a successful push). The one real difference
+// is the smoke test: cmd/worker has no HTTP endpoint to curl, and its
+// service normally runs at desired_count=0 (modules/service-worker scales
+// to zero between ingest runs) — waiting for "services-stable" on a
+// service that's supposed to have zero tasks proves nothing about whether
+// the new image actually boots. Force one task up instead and check its
+// own startup log line.
+pipeline {
+    agent { label 'fargate-agent' }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+    }
+
+    triggers {
+        pollSCM('H/5 * * * *')
+    }
+
+    environment {
+        AWS_REGION      = 'us-west-1'
+        ECR_REPO        = '881811711506.dkr.ecr.us-west-1.amazonaws.com/job-syllabus/worker'
+        IMAGE_TAG       = "${env.GIT_COMMIT}"
+        ECS_CLUSTER     = 'job-syllabus'
+        ECS_SERVICE     = 'worker'
+        TASK_DEF_FAMILY = 'job-syllabus-worker'
+        LOG_GROUP       = '/ecs/job-syllabus'
+    }
+
+    stages {
+        stage('Vet') {
+            steps { sh 'go vet ./...' }
+        }
+        stage('Lint') {
+            steps { sh 'golangci-lint run ./...' }
+        }
+        stage('Test') {
+            steps { sh 'go test -race -cover ./...' }
+        }
+        stage('Extraction validation gate') {
+            steps { sh 'go test ./internal/extract/... -run TestExtractionPrecisionRecall -v' }
+        }
+        stage('Build image') {
+            agent { label 'kaniko-agent' }
+            steps {
+                checkout scm
+                script {
+                    def status = sh(returnStatus: true, script: '''
+                      mkdir -p /kaniko/.docker
+                      ECR_HOST="${ECR_REPO%%/*}"
+                      AUTH=$(printf "AWS:%s" "$(aws ecr get-login-password --region "$AWS_REGION")" | base64 -w0)
+                      printf '{"auths":{"%s":{"auth":"%s"}}}' "$ECR_HOST" "$AUTH" > /kaniko/.docker/config.json
+                      /kaniko/executor --dockerfile=Dockerfile --context="dir://$(pwd)" \
+                        --destination="$ECR_REPO:$IMAGE_TAG" --build-arg=BINARY=worker --cache=false \
+                        --single-snapshot --ignore-path=/home/jenkins
+                    ''')
+                    echo "Kaniko step exited ${status} — this can be a false failure if the JNLP wrapper died after a successful push; the next stage verifies against ECR directly."
+                }
+            }
+        }
+        stage('Verify image pushed') {
+            steps {
+                sh '''
+                  for i in $(seq 1 20); do
+                    if aws ecr describe-images --repository-name job-syllabus/worker \
+                        --image-ids imageTag="$IMAGE_TAG" --region "$AWS_REGION" >/dev/null 2>&1; then
+                      echo "Found $ECR_REPO:$IMAGE_TAG in ECR"
+                      exit 0
+                    fi
+                    sleep 15
+                  done
+                  echo "Image $ECR_REPO:$IMAGE_TAG never appeared in ECR" >&2
+                  exit 1
+                '''
+            }
+        }
+        stage('Trivy scan') {
+            steps {
+                sh 'trivy image --severity HIGH,CRITICAL --exit-code 1 "$ECR_REPO:$IMAGE_TAG"'
+            }
+        }
+        stage('Deploy') {
+            steps {
+                // Same pattern as api-build's Deploy stage: describe the
+                // current revision, swap only the image, register a new
+                // one, point the service at it. Deliberately does NOT
+                // touch desired_count here — modules/service-worker's
+                // queue-depth autoscaling owns that; a deploy shouldn't
+                // force a task up on its own account (the next stage does
+                // that explicitly, as a smoke test, not as a side effect
+                // of deploying).
+                sh '''
+                  aws ecs describe-task-definition --task-definition "$TASK_DEF_FAMILY" --region "$AWS_REGION" \
+                    --query 'taskDefinition' > current-task-def.json
+
+                  jq --arg IMAGE "$ECR_REPO:$IMAGE_TAG" \
+                    '.containerDefinitions[0].image = $IMAGE
+                     | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                           .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
+                    current-task-def.json > new-task-def.json
+
+                  NEW_REVISION_ARN=$(aws ecs register-task-definition --region "$AWS_REGION" \
+                    --cli-input-json file://new-task-def.json \
+                    --query 'taskDefinition.taskDefinitionArn' --output text)
+
+                  echo "Registered $NEW_REVISION_ARN"
+
+                  aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
+                    --task-definition "$NEW_REVISION_ARN" --region "$AWS_REGION"
+                '''
+            }
+        }
+        stage('Smoke test') {
+            steps {
+                // Force exactly one task up on the new revision and
+                // confirm it reaches its own "worker: starting" log line
+                // — proof the binary actually initialized (loaded
+                // skills.yaml, connected to SQS), not just that the
+                // container started. The queue-depth-zero alarm
+                // (modules/service-worker) reclaims this task back to 0
+                // on its own once it's sat idle for 5 minutes; no manual
+                // scale-down needed here.
+                sh '''
+                  aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
+                    --desired-count 1 --region "$AWS_REGION" >/dev/null
+                  aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --region "$AWS_REGION"
+
+                  START_TIME=$(( $(date -u +%s) - 60 ))
+                  for i in $(seq 1 12); do
+                    FOUND=$(aws logs filter-log-events --log-group-name "$LOG_GROUP" --region "$AWS_REGION" \
+                      --log-stream-name-prefix "worker/worker" --start-time "${START_TIME}000" \
+                      --filter-pattern "\\"worker: starting\\"" --query 'events[0].message' --output text)
+                    if [ "$FOUND" != "None" ] && [ -n "$FOUND" ]; then
+                      echo "Confirmed: $FOUND"
+                      exit 0
+                    fi
+                    sleep 10
+                  done
+                  echo "Never saw a 'worker: starting' log line from the new task" >&2
+                  exit 1
+                '''
+            }
+        }
+    }
+}

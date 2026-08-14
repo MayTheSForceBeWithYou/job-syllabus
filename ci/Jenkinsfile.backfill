@@ -1,0 +1,80 @@
+// docs/design.md §5: "Jenkins additionally gets a parameterized on-demand
+// backfill job so you can re-ingest a single company without waiting for
+// the schedule." Runs the SAME task definition EventBridge Scheduler
+// invokes daily (modules/task-scheduled's "ingest" instantiation) via a
+// one-off `aws ecs run-task`, overriding INGEST_ONLY_COMPANY
+// (cmd/ingest's own filter, not a hand-sliced companies.yaml — see that
+// flag's comment) so this exercises the exact same image, task role, and
+// config the scheduled run does, not a parallel bespoke path.
+//
+// Manual only — no triggers block. Parameterized, not auto-discovered
+// from companies.yaml, so a typo in COMPANY_SLUG fails fast in
+// cmd/ingest's own validation rather than silently matching nothing.
+pipeline {
+    agent { label 'fargate-agent' }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+    }
+
+    parameters {
+        string(name: 'COMPANY_SLUG', description: 'The `slug` field of one entry in data/companies.yaml, e.g. "epic-games".')
+    }
+
+    environment {
+        AWS_REGION      = 'us-west-1'
+        ECS_CLUSTER     = 'job-syllabus'
+        TASK_DEF_FAMILY = 'job-syllabus-ingest'
+        LOG_GROUP       = '/ecs/job-syllabus'
+    }
+
+    stages {
+        stage('Validate parameter') {
+            steps {
+                script {
+                    if (!params.COMPANY_SLUG?.trim()) {
+                        error 'COMPANY_SLUG is required — pass the slug field from data/companies.yaml (e.g. "epic-games").'
+                    }
+                }
+            }
+        }
+        stage('Run backfill') {
+            steps {
+                // Reuses the exact subnets/security-group Terraform
+                // already wired for the SAME task definition's scheduled
+                // invocation (modules/task-scheduled, EventBridge
+                // Scheduler) rather than re-deriving or hardcoding them
+                // here — one source of truth for "how does the ingest
+                // task reach the network."
+                sh '''
+                  SCHEDULE_NET=$(aws scheduler get-schedule --name job-syllabus-ingest --group-name default \
+                    --region "$AWS_REGION" --query 'Target.EcsParameters.NetworkConfiguration.awsvpcConfiguration' --output json)
+                  SUBNETS=$(echo "$SCHEDULE_NET" | jq -c '.Subnets')
+                  SGS=$(echo "$SCHEDULE_NET" | jq -c '.SecurityGroups')
+                  NETWORK_CONFIG=$(jq -n --argjson subnets "$SUBNETS" --argjson sgs "$SGS" \
+                    '{awsvpcConfiguration:{subnets:$subnets,securityGroups:$sgs,assignPublicIp:"ENABLED"}}')
+
+                  TASK_ARN=$(aws ecs run-task --cluster "$ECS_CLUSTER" --task-definition "$TASK_DEF_FAMILY" \
+                    --launch-type FARGATE --region "$AWS_REGION" \
+                    --network-configuration "$NETWORK_CONFIG" \
+                    --overrides "{\\"containerOverrides\\":[{\\"name\\":\\"ingest\\",\\"environment\\":[{\\"name\\":\\"INGEST_ONLY_COMPANY\\",\\"value\\":\\"$COMPANY_SLUG\\"}]}]}" \
+                    --query 'tasks[0].taskArn' --output text)
+
+                  if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
+                    echo "run-task did not return a task ARN" >&2
+                    exit 1
+                  fi
+                  echo "Started $TASK_ARN"
+
+                  aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" --region "$AWS_REGION"
+
+                  EXIT_CODE=$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" --region "$AWS_REGION" \
+                    --query 'tasks[0].containers[0].exitCode' --output text)
+                  echo "Container exited $EXIT_CODE"
+                  [ "$EXIT_CODE" = "0" ]
+                '''
+            }
+        }
+    }
+}

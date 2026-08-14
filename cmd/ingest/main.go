@@ -112,6 +112,15 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+func filterCompany(companies []connectors.CompanyConfig, slug string) []connectors.CompanyConfig {
+	for _, c := range companies {
+		if c.Slug == slug {
+			return []connectors.CompanyConfig{c}
+		}
+	}
+	return nil
+}
+
 func envDuration(key string, fallback time.Duration) time.Duration {
 	v := os.Getenv(key)
 	if v == "" {
@@ -135,6 +144,20 @@ func runIngest(ctx context.Context, s *store.Store, s3c *s3.Client, sqsc *sqs.Cl
 	if err != nil {
 		log.Fatalf("load %s: %v", companiesPath, err)
 	}
+
+	// Backs Jenkins' on-demand backfill job (ci/jobs.groovy, docs/design.md
+	// §5: "a parameterized on-demand backfill job so you can re-ingest a
+	// single company without waiting for the schedule") — filtering here
+	// in Go rather than pre-slicing companies.yaml in the Jenkinsfile
+	// means backfill exercises the exact same validated config, not a
+	// hand-assembled subset of it.
+	if only := os.Getenv("INGEST_ONLY_COMPANY"); only != "" {
+		companies = filterCompany(companies, only)
+		if len(companies) == 0 {
+			log.Fatalf("INGEST_ONLY_COMPANY=%q matches no company in %s", only, companiesPath)
+		}
+	}
+
 	logger.Info("ingest run starting", "companies", len(companies), "companyTimeout", companyTimeout.String())
 
 	now := time.Now().UTC()
