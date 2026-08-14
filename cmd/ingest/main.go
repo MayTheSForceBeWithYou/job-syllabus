@@ -15,7 +15,6 @@ import (
 	"log"
 	"log/slog"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +24,7 @@ import (
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/dedupe"
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/extract"
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/model"
+	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/rank"
 	"github.com/MayTheSForceBeWithYou/job-syllabus/internal/store"
 )
 
@@ -256,14 +256,6 @@ func toPosting(c connectors.CompanyConfig, rp connectors.RawPosting, now time.Ti
 	}, nil
 }
 
-type skillRow struct {
-	display    string
-	category   string
-	count      int
-	required   int
-	niceToHave int
-}
-
 func runReport(ctx context.Context, s *store.Store) {
 	postings, err := s.ListAllPostings(ctx)
 	if err != nil {
@@ -289,64 +281,27 @@ func runReport(ctx context.Context, s *store.Store) {
 		displayByID[sk.ID] = sk
 	}
 
-	rows := make(map[string]*skillRow)
-	for _, e := range edges {
-		row, ok := rows[e.SkillID]
-		if !ok {
-			sk := displayByID[e.SkillID]
-			row = &skillRow{display: sk.Display, category: sk.Category}
-			if row.display == "" {
-				row.display = e.SkillID // skills.yaml changed since this edge was written
-			}
-			rows[e.SkillID] = row
-		}
-		row.count++
-		if e.Required {
-			row.required++
-		} else {
-			row.niceToHave++
-		}
-	}
-
-	ids := make([]string, 0, len(rows))
-	for id := range rows {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool {
-		if rows[ids[i]].count != rows[ids[j]].count {
-			return rows[ids[i]].count > rows[ids[j]].count
-		}
-		return ids[i] < ids[j] // stable tie-break
-	})
+	rows := rank.Skills(edges, displayByID)
 
 	skillWidth, categoryWidth := len("SKILL"), len("CATEGORY")
-	for _, id := range ids {
-		if l := len(rows[id].display); l > skillWidth {
+	for _, r := range rows {
+		if l := len(r.Display); l > skillWidth {
 			skillWidth = l
 		}
-		if l := len(rows[id].category); l > categoryWidth {
+		if l := len(r.Category); l > categoryWidth {
 			categoryWidth = l
 		}
 	}
 
-	fmt.Printf("=== Skill frequency across %d postings (%d companies) ===\n", len(postings), countCompanies(postings))
+	fmt.Printf("=== Skill frequency across %d postings (%d companies) ===\n", len(postings), rank.CountCompanies(postings))
 	fmt.Printf("%-*s %-*s %6s %10s %6s %12s\n", skillWidth, "SKILL", categoryWidth, "CATEGORY", "COUNT", "% OF POSTS", "REQ'D", "NICE-TO-HAVE")
-	for _, id := range ids {
-		r := rows[id]
-		pct := float64(r.count) / float64(len(postings)) * 100
-		fmt.Printf("%-*s %-*s %6d %9.1f%% %6d %12d\n", skillWidth, r.display, categoryWidth, r.category, r.count, pct, r.required, r.niceToHave)
+	for _, r := range rows {
+		pct := float64(r.Count) / float64(len(postings)) * 100
+		fmt.Printf("%-*s %-*s %6d %9.1f%% %6d %12d\n", skillWidth, r.Display, categoryWidth, r.Category, r.Count, pct, r.Required, r.NiceToHave)
 	}
 
 	if len(rows) == 0 {
 		fmt.Println("(no skills matched — every posting's requirements/nice_to_have sections came up empty; see NEXT_STEPS.md's heading-classification note)")
 	}
 	fmt.Printf("\n%d distinct skills matched across %d postings\n", len(rows), len(postings))
-}
-
-func countCompanies(postings []model.Posting) int {
-	seen := map[string]bool{}
-	for _, p := range postings {
-		seen[p.CompanySlug] = true
-	}
-	return len(seen)
 }

@@ -16,6 +16,12 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go
     && tar -C /usr/local -xzf /tmp/go.tar.gz \
     && rm /tmp/go.tar.gz
 ENV PATH="/usr/local/go/bin:${PATH}"
+ENV CGO_ENABLED=1
+
+# `go test -race` (api-build's Test stage) needs CGO, which needs a real C
+# toolchain — without this, the very first real CI run fails on that stage.
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg lsb-release unzip \

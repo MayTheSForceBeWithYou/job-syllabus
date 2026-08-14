@@ -54,6 +54,16 @@ func New(ctx context.Context, endpoint string) (*Store, error) {
 	return &Store{client: client}, nil
 }
 
+// NewFromClient wraps an already-configured DynamoDB client. New's fake
+// static credentials and hardcoded region are a DynamoDB Local-only
+// convenience (Phase 1); callers that need real AWS credentials/region —
+// cmd/api and cmd/rollup — build their own client via
+// config.LoadDefaultConfig (with the same DYNAMODB_ENDPOINT override for
+// local testing) and hand it in here instead.
+func NewFromClient(client *dynamodb.Client) *Store {
+	return &Store{client: client}
+}
+
 // EnsureTable creates the single table with its two GSIs if it doesn't
 // already exist. This is a DynamoDB Local convenience for Phase 1 — the
 // real table is Terraform-managed starting Phase 2 (docs/design.md §9).
