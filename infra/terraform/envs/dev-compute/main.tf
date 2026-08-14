@@ -72,3 +72,72 @@ module "api_gateway" {
   private_subnet_ids = module.network.private_subnet_ids
   alb_listener_arn   = module.service_api.alb_listener_arn
 }
+
+module "service_worker" {
+  source = "../../modules/service-worker"
+
+  aws_region              = "us-west-1"
+  vpc_id                  = module.network.vpc_id
+  public_subnet_ids       = module.network.public_subnet_ids
+  fargate_sg_id           = module.network.fargate_sg_id
+  ecs_cluster_id          = module.ecs_cluster.cluster_id
+  ecs_cluster_name        = module.ecs_cluster.cluster_name
+  task_execution_role_arn = module.ecs_cluster.task_execution_role_arn
+  log_group_name          = module.ecs_cluster.log_group_name
+  ecr_repo_url            = data.terraform_remote_state.data.outputs.ecr_repository_urls["worker"]
+  table_arn               = data.terraform_remote_state.data.outputs.table_arn
+  raw_bucket_arn          = data.terraform_remote_state.data.outputs.data_bucket_arn
+  extract_queue_url       = module.queues.queue_urls["extract"]
+  extract_queue_arn       = module.queues.queue_arns["extract"]
+}
+
+# EventBridge Scheduler -> ecs:RunTask on cmd/ingest, daily 06:00 UTC
+# (docs/design.md §5 "Scheduling") — the recurring path; Jenkins'
+# parameterized backfill job (ci/jobs.groovy) covers on-demand single-
+# company re-ingestion instead of overloading this schedule for it.
+module "task_scheduled_ingest" {
+  source = "../../modules/task-scheduled"
+
+  aws_region   = "us-west-1"
+  name         = "ingest"
+  ecr_repo_url = data.terraform_remote_state.data.outputs.ecr_repository_urls["ingest"]
+  command      = ["ingest"]
+  environment = [
+    { name = "COMPANIES_FILE", value = "/data/companies.yaml" },
+    { name = "SKILLS_FILE", value = "/data/skills.yaml" },
+    { name = "RAW_BUCKET", value = data.terraform_remote_state.data.outputs.data_bucket },
+    { name = "EXTRACT_QUEUE_URL", value = module.queues.queue_urls["extract"] },
+  ]
+  ecs_cluster_name        = module.ecs_cluster.cluster_name
+  task_execution_role_arn = module.ecs_cluster.task_execution_role_arn
+  task_role_arn           = aws_iam_role.ingest_task.arn
+  subnet_ids              = module.network.public_subnet_ids
+  security_group_ids      = [module.network.fargate_sg_id]
+  log_group_name          = module.ecs_cluster.log_group_name
+  schedule_expression     = "cron(0 6 * * ? *)"
+}
+
+# EventBridge Scheduler -> ecs:RunTask on `cmd/rollup reconcile`, daily
+# 07:00 UTC (docs/design.md §4/§5) — an hour after ingest so extraction
+# from that day's run has had time to drain through cmd/worker's queue
+# first; reconciling against a still-in-flight backlog would just find
+# (correct, temporary) drift and immediately "fix" counters that were
+# about to update on their own anyway.
+module "task_scheduled_rollup_reconcile" {
+  source = "../../modules/task-scheduled"
+
+  aws_region   = "us-west-1"
+  name         = "rollup-reconcile"
+  ecr_repo_url = data.terraform_remote_state.data.outputs.ecr_repository_urls["rollup"]
+  command      = ["reconcile"]
+  environment = [
+    { name = "BACKUP_BUCKET", value = data.terraform_remote_state.data.outputs.data_bucket },
+  ]
+  ecs_cluster_name        = module.ecs_cluster.cluster_name
+  task_execution_role_arn = module.ecs_cluster.task_execution_role_arn
+  task_role_arn           = aws_iam_role.rollup_task.arn
+  subnet_ids              = module.network.public_subnet_ids
+  security_group_ids      = [module.network.fargate_sg_id]
+  log_group_name          = module.ecs_cluster.log_group_name
+  schedule_expression     = "cron(0 7 * * ? *)"
+}
