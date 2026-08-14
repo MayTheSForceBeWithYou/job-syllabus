@@ -79,15 +79,18 @@ jenkins:
             agentContainerName: "jenkins-agent"
             launchType: "FARGATE"
             operatingSystemFamily: "LINUX"
-            # Bumped from 1024/2048 (~1 vCPU/2GB): the agent connection
-            # dropped mid-build with no error, consistent with an OOM
-            # kill — confirmed against a real run where Kaniko's full-
-            # filesystem-snapshot build (Go toolchain rootfs + module
-            # cache + built binary) was the last thing logged before the
-            # agent's JNLP channel went "Terminated" and Jenkins reported
-            # "missing workspace" on the very next step.
-            cpu: "2048"
-            memory: "4096"
+            # Bumped twice now. 1024/2048 -> 2048/4096 didn't fix it either
+            # — confirmed via ECS task inspection that Jenkins itself
+            # (stopCode UserInitiated, "Stopped by Jenkins Amazon ECS
+            # PlugIn") kills the agent, not AWS/OOM, always right as
+            # Kaniko's silent, CPU-heavy full-filesystem snapshot phase
+            # runs — consistent with that phase starving the JNLP agent
+            # process of enough scheduling time to answer Jenkins' channel
+            # keep-alive pings before its timeout. More headroom alongside
+            # the Jenkinsfile's --single-snapshot (less snapshot work
+            # overall) to actually give the agent process room to breathe.
+            cpu: "4096"
+            memory: "8192"
             networkMode: "awsvpc"
             assignPublicIp: true
             subnets: "${FARGATE_SUBNET_IDS}"

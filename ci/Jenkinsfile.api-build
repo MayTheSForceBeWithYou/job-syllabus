@@ -66,8 +66,13 @@ pipeline {
                   ECR_HOST="${ECR_REPO%%/*}"
                   AUTH=$(printf "AWS:%s" "$(aws ecr get-login-password --region "$AWS_REGION")" | base64 -w0)
                   printf '{"auths":{"%s":{"auth":"%s"}}}' "$ECR_HOST" "$AUTH" > /kaniko/.docker/config.json
+                  # --single-snapshot: one full-filesystem snapshot at the
+                  # end instead of one per Dockerfile instruction — this
+                  # Dockerfile only has 2 RUN/COPY pairs, so most of that
+                  # per-instruction snapshotting was pure overhead.
                   /kaniko/executor --dockerfile=Dockerfile --context="dir://$(pwd)" \
-                    --destination="$ECR_REPO:$IMAGE_TAG" --build-arg=BINARY=api --cache=false
+                    --destination="$ECR_REPO:$IMAGE_TAG" --build-arg=BINARY=api --cache=false \
+                    --single-snapshot
                 '''
             }
         }
