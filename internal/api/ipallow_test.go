@@ -27,7 +27,7 @@ func TestIPAllowlistAllowsMatchingIP(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true })
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/skills", nil)
-	req.Header.Set("X-Forwarded-For", "107.140.215.30")
+	req.Header.Set("X-Real-Ip", "107.140.215.30")
 	rec := httptest.NewRecorder()
 	ipAllowlist("107.140.215.30/32")(next).ServeHTTP(rec, req)
 
@@ -41,7 +41,7 @@ func TestIPAllowlistBlocksNonMatchingIP(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true })
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/skills", nil)
-	req.Header.Set("X-Forwarded-For", "8.8.8.8")
+	req.Header.Set("X-Real-Ip", "8.8.8.8")
 	rec := httptest.NewRecorder()
 	ipAllowlist("107.140.215.30/32")(next).ServeHTTP(rec, req)
 
@@ -53,19 +53,26 @@ func TestIPAllowlistBlocksNonMatchingIP(t *testing.T) {
 	}
 }
 
-func TestIPAllowlistUsesFirstForwardedIP(t *testing.T) {
+func TestIPAllowlistIgnoresXForwardedFor(t *testing.T) {
+	// X-Forwarded-For does not carry the real client IP through this
+	// service's API Gateway -> VPC Link -> ALB path at all (it's the VPC
+	// Link's own internal hop address instead) — confirmed against a real
+	// request from the operator's own allowed IP that was rejected until
+	// the allowlist switched to X-Real-Ip. A client setting
+	// X-Forwarded-For to an allowed IP must not bypass the check.
 	called := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true })
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/skills", nil)
-	// The allowed client IP first, followed by an intermediate hop's IP —
-	// only the first entry should be checked.
-	req.Header.Set("X-Forwarded-For", "107.140.215.30, 10.20.0.55")
+	req.Header.Set("X-Forwarded-For", "107.140.215.30")
 	rec := httptest.NewRecorder()
 	ipAllowlist("107.140.215.30/32")(next).ServeHTTP(rec, req)
 
-	if !called {
-		t.Error("next handler was not called when the first X-Forwarded-For entry is allowed")
+	if called {
+		t.Error("next handler was called based on X-Forwarded-For instead of X-Real-Ip")
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusForbidden)
 	}
 }
 
@@ -78,7 +85,7 @@ func TestIPAllowlistBlocksMissingHeader(t *testing.T) {
 	ipAllowlist("107.140.215.30/32")(next).ServeHTTP(rec, req)
 
 	if called {
-		t.Error("next handler was called with no X-Forwarded-For header at all")
+		t.Error("next handler was called with no X-Real-Ip header at all")
 	}
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusForbidden)

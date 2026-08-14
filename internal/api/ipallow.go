@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strings"
 )
 
 // ipAllowlist is Phase 3's whole IP-restriction story (docs/design.md
@@ -18,17 +17,23 @@ import (
 // JWT-authorizer design for Phase 6 — so the fix is here instead.
 //
 // allowedCIDR empty disables the check entirely (local `go run` testing,
-// where there's no API Gateway in front to set X-Forwarded-For at all).
+// where there's no API Gateway in front to set X-Real-Ip at all).
 //
-// Trust note: this trusts the FIRST entry of X-Forwarded-For as the real
-// client IP. That's safe specifically because API Gateway is the one
-// setting it here (a managed reverse proxy overwriting/prepending the
-// header from the actual TCP connection, the same convention ALB and
-// CloudFront both follow) — the only way to reach this service at all is
-// through API Gateway -> VPC Link -> the internal ALB, so there's no path
-// for an untrusted party to inject their own X-Forwarded-For directly.
-// This is explicitly a lightweight placeholder, not the final security
-// posture: Phase 6 replaces it with a real Cognito JWT authorizer.
+// Trust note: this reads X-Real-Ip, not the conventional X-Forwarded-For.
+// A real request from the operator's own allowed IP proved
+// X-Forwarded-For does NOT carry the true external client IP through this
+// service's API Gateway (HTTP API) -> VPC Link -> internal ALB path —
+// what actually arrives is the VPC Link's own internal VPC address (the
+// hop between the VPC Link and the ALB), not anything traceable back to
+// the original caller. X-Real-Ip is populated instead by an explicit
+// overwrite:header parameter mapping on the API Gateway integration
+// (modules/api-gateway/main.tf), set to $context.identity.sourceIp —
+// API Gateway's own authoritative view of the caller, which it doesn't
+// otherwise propagate for private integrations. overwrite:, not append:,
+// on that mapping means a client-supplied X-Real-Ip can't survive to
+// spoof this check. This is explicitly a lightweight placeholder, not the
+// final security posture: Phase 6 replaces it with a real Cognito JWT
+// authorizer.
 func ipAllowlist(allowedCIDR string) func(http.Handler) http.Handler {
 	var allowed *net.IPNet
 	if allowedCIDR != "" {
@@ -49,21 +54,15 @@ func ipAllowlist(allowedCIDR string) func(http.Handler) http.Handler {
 				return
 			}
 
-			xff := r.Header.Get("X-Forwarded-For")
-			clientIP := firstForwardedIP(xff)
-			ip := net.ParseIP(clientIP)
+			realIP := r.Header.Get("X-Real-Ip")
+			ip := net.ParseIP(realIP)
 			if ip == nil || !allowed.Contains(ip) {
 				slog.Warn("api: ip allowlist rejected request",
-					"path", r.URL.Path, "xForwardedFor", xff, "remoteAddr", r.RemoteAddr)
+					"path", r.URL.Path, "xRealIp", realIP, "remoteAddr", r.RemoteAddr)
 				writeProblem(w, r, http.StatusForbidden, "forbidden", "")
 				return
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-func firstForwardedIP(xff string) string {
-	first, _, _ := strings.Cut(xff, ",")
-	return strings.TrimSpace(first)
 }

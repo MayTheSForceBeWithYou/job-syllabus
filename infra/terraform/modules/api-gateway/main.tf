@@ -19,12 +19,28 @@ resource "aws_apigatewayv2_vpc_link" "main" {
 # dumb proxy. payload_format_version 1.0 is what HTTP_PROXY integrations
 # to an ALB require.
 #
-# request_parameters overwrite:path is load-bearing: confirmed against a
-# real smoke test that HTTP_PROXY VPC_LINK integrations forward the
-# client's ORIGINAL path unchanged, stage prefix included — a request to
-# ".../prod/healthz" reached the app as literally "/prod/healthz", which
-# chi correctly 404'd since it only knows "/healthz". Rewriting the
-# outgoing path to just the captured {proxy} segment strips that prefix.
+# request_parameters:
+#
+# overwrite:path is load-bearing: confirmed against a real smoke test that
+# HTTP_PROXY VPC_LINK integrations forward the client's ORIGINAL path
+# unchanged, stage prefix included — a request to ".../prod/healthz"
+# reached the app as literally "/prod/healthz", which chi correctly 404'd
+# since it only knows "/healthz". Rewriting the outgoing path to just the
+# captured {proxy} segment strips that prefix.
+#
+# overwrite:header.x-real-ip is also load-bearing, for a related but
+# distinct reason: confirmed against a real request from the operator's
+# own allowed IP that X-Forwarded-For does NOT carry the true external
+# client IP through a VPC_LINK private integration at all — what actually
+# arrives at the backend is the VPC Link's own internal VPC address (the
+# hop between the VPC Link and the ALB), not anything traceable back to
+# API Gateway's edge. internal/api/ipallow.go's IP-allowlist was unusable
+# without this: API Gateway itself DOES know the real client IP
+# ($context.identity.sourceIp, already used in this file's access log
+# format below), so this injects it into a dedicated header instead of
+# relying on X-Forwarded-For. overwrite:, not append:, so a client can't
+# supply their own x-real-ip and have it survive alongside/ahead of the
+# authoritative value.
 resource "aws_apigatewayv2_integration" "alb" {
   api_id                 = aws_apigatewayv2_api.main.id
   integration_type       = "HTTP_PROXY"
@@ -35,7 +51,8 @@ resource "aws_apigatewayv2_integration" "alb" {
   payload_format_version = "1.0"
 
   request_parameters = {
-    "overwrite:path" = "/$request.path.proxy"
+    "overwrite:path"             = "/$request.path.proxy"
+    "overwrite:header.x-real-ip" = "$context.identity.sourceIp"
   }
 }
 
