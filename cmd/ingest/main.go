@@ -319,12 +319,22 @@ func runReport(ctx context.Context, s *store.Store) {
 		return ids[i] < ids[j] // stable tie-break
 	})
 
+	skillWidth, categoryWidth := len("SKILL"), len("CATEGORY")
+	for _, id := range ids {
+		if l := len(rows[id].display); l > skillWidth {
+			skillWidth = l
+		}
+		if l := len(rows[id].category); l > categoryWidth {
+			categoryWidth = l
+		}
+	}
+
 	fmt.Printf("=== Skill frequency across %d postings (%d companies) ===\n", len(postings), countCompanies(postings))
-	fmt.Printf("%-28s %-14s %6s %10s %6s %12s\n", "SKILL", "CATEGORY", "COUNT", "% OF POSTS", "REQ'D", "NICE-TO-HAVE")
+	fmt.Printf("%-*s %-*s %6s %10s %6s %12s\n", skillWidth, "SKILL", categoryWidth, "CATEGORY", "COUNT", "% OF POSTS", "REQ'D", "NICE-TO-HAVE")
 	for _, id := range ids {
 		r := rows[id]
 		pct := float64(r.count) / float64(len(postings)) * 100
-		fmt.Printf("%-28s %-14s %6d %9.1f%% %6d %12d\n", r.display, r.category, r.count, pct, r.required, r.niceToHave)
+		fmt.Printf("%-*s %-*s %6d %9.1f%% %6d %12d\n", skillWidth, r.display, categoryWidth, r.category, r.count, pct, r.required, r.niceToHave)
 	}
 
 	if len(rows) == 0 {
