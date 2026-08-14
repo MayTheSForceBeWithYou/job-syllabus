@@ -19,6 +19,10 @@ pipeline {
         pollSCM('H/5 * * * *')
     }
 
+    environment {
+        AWS_REGION = 'us-west-1'
+    }
+
     stages {
         stage('fmt check') {
             steps {
@@ -42,6 +46,23 @@ pipeline {
         stage('plan') {
             steps {
                 dir('infra/terraform/envs/dev-compute') {
+                    // terraform.tfvars is deliberately gitignored (real
+                    // operator IP/email, not something to commit to a
+                    // public repo) so it never reaches this checkout —
+                    // confirmed against a real first run of infra-apply,
+                    // which failed outright on missing required variables.
+                    // Same SSM-as-source-of-apply-specific-values pattern
+                    // already used for the Jenkins admin password and the
+                    // API URL.
+                    sh '''
+                      jq -n \
+                        --arg jenkins_allowed_cidr "$(aws ssm get-parameter --name /job-syllabus/terraform/jenkins_allowed_cidr --region "$AWS_REGION" --query Parameter.Value --output text)" \
+                        --arg api_allowed_cidr "$(aws ssm get-parameter --name /job-syllabus/terraform/api_allowed_cidr --region "$AWS_REGION" --query Parameter.Value --output text)" \
+                        --arg alert_email "$(aws ssm get-parameter --name /job-syllabus/terraform/alert_email --region "$AWS_REGION" --query Parameter.Value --output text)" \
+                        --argjson restore_from_snapshot "$(aws ssm get-parameter --name /job-syllabus/terraform/restore_from_snapshot --region "$AWS_REGION" --query Parameter.Value --output text)" \
+                        '{jenkins_allowed_cidr:$jenkins_allowed_cidr, api_allowed_cidr:$api_allowed_cidr, alert_email:$alert_email, restore_from_snapshot:$restore_from_snapshot}' \
+                        > terraform.tfvars.json
+                    '''
                     sh 'terraform init'
                     sh 'terraform plan -out=tfplan'
                 }
