@@ -13,25 +13,6 @@ resource "aws_security_group" "jenkins_alb" {
     cidr_blocks = [var.jenkins_allowed_cidr]
   }
 
-  # Jenkins build agents (ephemeral Fargate tasks, §10) need to reach the
-  # controller for the JNLP/WebSocket agent connection — confirmed as a
-  # real gap against a live boot: agents timed out connecting to
-  # jenkinsUrl with every one of the two rules above.
-  #
-  # This is an SG-to-SG reference, not a CIDR, and it works even though
-  # this ALB is internet-facing (not `internal = true`): AWS's own DNS
-  # resolves a public ALB's hostname to its *private* IPs for clients
-  # inside the same VPC, so agent traffic never actually leaves the VPC
-  # or needs a public-IP-based allow rule — no 0.0.0.0/0 needed, and
-  # Jenkins stays unreachable from the open internet exactly as before.
-  ingress {
-    description     = "HTTPS from the Jenkins Fargate build agents"
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.fargate.id]
-  }
-
   egress {
     from_port   = 0
     to_port     = 0
@@ -53,6 +34,22 @@ resource "aws_security_group" "jenkins_ec2" {
     to_port         = 8080
     protocol        = "tcp"
     security_groups = [aws_security_group.jenkins_alb.id]
+  }
+
+  # Jenkins build agents (ephemeral Fargate tasks, §10) connect straight
+  # to the controller's private IP on 8080, not through the public ALB —
+  # confirmed against a real boot that the ALB's DNS resolves to public
+  # IPs even from inside this VPC (no automatic private-IP hairpin for
+  # public ALBs), so agent traffic there genuinely traverses the internet
+  # gateway and can't be allowlisted by a fixed CIDR (Fargate's public IPs
+  # are ephemeral). This SG-to-SG rule, unlike that one, actually works:
+  # it's direct private-ENI-to-private-ENI traffic within the VPC.
+  ingress {
+    description     = "Agent connections from the Jenkins Fargate build agents"
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    security_groups = [aws_security_group.fargate.id]
   }
 
   # EC2 Instance Connect (browser-based SSH from the AWS console) proxies

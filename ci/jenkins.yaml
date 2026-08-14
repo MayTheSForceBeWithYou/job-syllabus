@@ -40,9 +40,23 @@ jenkins:
         # command (`-url <this>`). Left unset, that command element is
         # null, and ECS's RunTask rejects the whole override outright:
         # "InvalidParameterException: Override argument cannot be null."
-        # Confirmed against a real boot — every agent launch failed this
-        # way regardless of agentContainerName being correctly set.
-        jenkinsUrl: "https://jenkins.job-syllabus.skopekreep.com/"
+        #
+        # Points at the controller's private IP:8080 directly, NOT the
+        # public HTTPS ALB URL used everywhere else in this file — the
+        # ALB is internet-facing, and confirmed against a real boot,
+        # its DNS name resolves to public IPs even when queried from
+        # inside the same VPC (no automatic private-IP hairpin for
+        # public ALBs). Agents connecting to the public URL genuinely
+        # traverse the internet gateway and arrive at the ALB's security
+        # group as a public IP, indistinguishable from any other internet
+        # client and impossible to allowlist by CIDR (Fargate's public
+        # IPs are ephemeral, drawn from AWS's general pool) — so the ALB
+        # stays locked to the operator's IP only, and agents instead go
+        # straight to the controller over the private VPC network, which
+        # a same-VPC security-group-to-security-group rule (see
+        # modules/network/security_groups.tf's jenkins_ec2 SG) can
+        # actually govern correctly.
+        jenkinsUrl: "${JENKINS_PRIVATE_URL}"
         templates:
           - templateName: "fargate-agent"
             label: "fargate-agent"
