@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -45,7 +46,24 @@ type leverPosting struct {
 
 func (c *LeverConnector) Fetch(ctx context.Context, cfg CompanyConfig) ([]RawPosting, error) {
 	start := time.Now()
-	url := fmt.Sprintf("https://api.lever.co/v0/postings/%s?mode=json", cfg.Token)
+
+	// An "eu:" token prefix routes to Lever's EU-region API host instead
+	// of the default api.lever.co — confirmed necessary against a real
+	// company (Frontier Developments): its public career site lives at
+	// jobs.eu.lever.co, and api.lever.co (the non-EU host) 404s outright
+	// for its token ("Document not found") even though the token itself
+	// is correct. EU-hosted accounts are a real, if uncommon, Lever
+	// configuration, not a one-off — this is a token convention, not a
+	// CompanyConfig schema change, matching how the Workday connector
+	// packs its own extra per-company identity into Token.
+	token := cfg.Token
+	host := "api.lever.co"
+	if rest, ok := strings.CutPrefix(token, "eu:"); ok {
+		host = "api.eu.lever.co"
+		token = rest
+	}
+
+	url := fmt.Sprintf("https://%s/v0/postings/%s?mode=json", host, token)
 	slog.Info("lever: fetching", "company", cfg.Slug, "url", url)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

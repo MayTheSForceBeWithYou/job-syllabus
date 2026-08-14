@@ -41,8 +41,12 @@ func NewDefaultHTTPClient() *http.Client {
 // is this function plus one new file.
 func NewRegistry(client *http.Client) map[string]Connector {
 	return map[string]Connector{
-		"greenhouse": NewGreenhouseConnector(client),
-		"lever":      NewLeverConnector(client),
+		"greenhouse":      NewGreenhouseConnector(client),
+		"lever":           NewLeverConnector(client),
+		"ashby":           NewAshbyConnector(client),
+		"smartrecruiters": NewSmartRecruitersConnector(client),
+		"workable":        NewWorkableConnector(client),
+		"workday":         NewWorkdayConnector(client),
 	}
 }
 

@@ -3,39 +3,354 @@
 # network tab for the XHR domain), confirm the token below resolves, add an
 # entry.
 #
-# Verified live (HTTP 200, board tokens confirmed) 2026-08-13.
+# Verified live (HTTP 200, board tokens confirmed, `company_name` field in
+# the response cross-checked against the intended company) 2026-08-14 —
+# Phase 4 registry expansion. Two tokens ("bethesda", "peak") were dropped
+# during verification despite returning HTTP 200 with real postings: they
+# were genuine companies (a physical-therapy practice, a mental-health
+# app), just not the game studios the same short token also happens to
+# name on Greenhouse. Don't add a token on a 200 status alone — check the
+# actual company_name/job titles in the response.
 
 - slug: epic-games
   name: Epic Games
   tier: platform
   ats: greenhouse
   token: epicgames
-  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live"]
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
 
 - slug: riot-games
   name: Riot Games
   tier: aaa
   ats: greenhouse
   token: riotgames
-  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live"]
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
 
 - slug: discord
   name: Discord
   tier: platform
   ats: greenhouse
   token: discord
-  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live"]
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
 
 - slug: roblox
   name: Roblox
   tier: platform
   ats: greenhouse
   token: roblox
-  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live"]
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
 
 - slug: kabam
   name: Kabam
   tier: midsize
   ats: lever
   token: kabam
-  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live"]
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: nintendo
+  name: Nintendo
+  tier: aaa
+  ats: greenhouse
+  token: nintendo
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: jetbrains
+  name: JetBrains
+  tier: tools
+  ats: greenhouse
+  token: jetbrains
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: rockstar-games
+  name: Rockstar Games
+  tier: aaa
+  ats: greenhouse
+  token: rockstargames
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: 2k
+  name: 2K
+  tier: aaa
+  ats: greenhouse
+  token: "2k"
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: bungie
+  name: Bungie
+  tier: aaa
+  ats: greenhouse
+  token: bungie
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: naughty-dog
+  name: Naughty Dog
+  tier: aaa
+  ats: greenhouse
+  token: naughtydog
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: insomniac-games
+  name: Insomniac Games
+  tier: aaa
+  ats: greenhouse
+  token: insomniac
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: remedy
+  name: Remedy Entertainment
+  tier: midsize
+  ats: greenhouse
+  token: remedy
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: digital-extremes
+  name: Digital Extremes
+  tier: midsize
+  ats: greenhouse
+  token: digitalextremes
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: gearbox
+  name: Gearbox Software
+  tier: aaa
+  ats: greenhouse
+  token: gearbox
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: scopely
+  name: Scopely
+  tier: midsize
+  ats: greenhouse
+  token: scopely
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: perforce
+  name: Perforce
+  tier: tools
+  ats: lever
+  token: perforce
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: larian-studios
+  name: Larian Studios
+  tier: midsize
+  ats: lever
+  token: larian
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: skydance
+  name: Skydance Games
+  tier: aaa
+  ats: lever
+  token: skydance
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: improbable
+  name: Improbable
+  tier: tools
+  ats: ashby
+  token: improbable
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: firaxis
+  name: Firaxis Games
+  tier: aaa
+  ats: greenhouse
+  token: firaxis
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: tango-gameworks
+  name: Tango Gameworks
+  tier: aaa
+  ats: greenhouse
+  token: tangogameworks
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: bandai-namco
+  name: Bandai Namco Entertainment America
+  tier: aaa
+  ats: greenhouse
+  token: bandainamco
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: hangar-13
+  name: Hangar 13
+  tier: aaa
+  ats: greenhouse
+  token: hangar13
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: unknown-worlds
+  name: Unknown Worlds Entertainment
+  tier: midsize
+  ats: greenhouse
+  token: unknownworlds
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: firesprite
+  name: Firesprite
+  tier: midsize
+  ats: greenhouse
+  token: firesprite
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: black-bird-interactive
+  name: Black Bird Interactive
+  tier: midsize
+  ats: lever
+  token: blackbirdinteractive
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: sauce-labs
+  name: Sauce Labs
+  tier: tools
+  ats: greenhouse
+  token: saucelabs
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: outfit7
+  name: Outfit7
+  tier: midsize
+  ats: greenhouse
+  token: outfit7
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: jam-city
+  name: Jam City
+  tier: midsize
+  ats: lever
+  token: jamcity
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: moon-active
+  name: Moon Active
+  tier: midsize
+  ats: ashby
+  token: moonactive
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: nordeus
+  name: Nordeus
+  tier: midsize
+  ats: greenhouse
+  token: nordeus
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: twitch
+  name: Twitch
+  tier: platform
+  ats: greenhouse
+  token: twitch
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: wildlife-studios
+  name: Wildlife Studios
+  tier: midsize
+  ats: greenhouse
+  token: wildlifestudios
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: housemarque
+  name: Housemarque
+  tier: midsize
+  ats: greenhouse
+  token: housemarque
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: krafton
+  name: KRAFTON
+  tier: aaa
+  ats: greenhouse
+  token: krafton
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: linden-lab
+  name: Linden Lab
+  tier: indie
+  ats: greenhouse
+  token: lindenlab
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: sky-mavis
+  name: Sky Mavis
+  tier: midsize
+  ats: ashby
+  token: skymavis
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: hasbro
+  name: Hasbro
+  tier: aaa
+  ats: greenhouse
+  token: hasbro
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: tripwire-interactive
+  name: Tripwire Interactive
+  tier: midsize
+  ats: greenhouse
+  token: tripwireinteractive
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: guerrilla-games
+  name: Guerrilla Games
+  tier: aaa
+  ats: greenhouse
+  token: guerrilla-games
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: turtle-rock-studios
+  name: Turtle Rock Studios
+  tier: midsize
+  ats: greenhouse
+  token: turtlerockstudios
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: cloud-chamber
+  name: Cloud Chamber
+  tier: aaa
+  ats: greenhouse
+  token: cloudchamberen
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: mojang-studios
+  name: Mojang Studios
+  tier: aaa
+  ats: greenhouse
+  token: mojangab
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: frontier-developments
+  name: Frontier Developments
+  tier: midsize
+  ats: lever
+  token: "eu:frontier"
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: daybreak-games
+  name: Daybreak Games
+  tier: midsize
+  ats: greenhouse
+  token: daybreakgames
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: visual-concepts
+  name: Visual Concepts
+  tier: aaa
+  ats: greenhouse
+  token: visualconcepts
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: crystal-dynamics
+  name: Crystal Dynamics
+  tier: aaa
+  ats: greenhouse
+  token: crystaldynamics
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
+
+- slug: digital-eclipse
+  name: Digital Eclipse
+  tier: midsize
+  ats: greenhouse
+  token: digitaleclipse
+  roleFilters: ["build", "release", "infrastructure", "platform", "devops", "live", "sre", "site reliability", "pipeline", "automation", "tools", "developer experience"]
