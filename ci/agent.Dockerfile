@@ -11,7 +11,11 @@ FROM jenkins/inbound-agent:latest-jdk21
 
 USER root
 
-ARG GO_VERSION=1.23.4
+# Matches go.mod's declared version (and the local dev toolchain) — a
+# mismatch here is what made golangci-lint auto-fetch an intermediate
+# Go toolchain (1.25) to build itself against, then refuse to lint a
+# go.mod targeting a newer language version than it was built with.
+ARG GO_VERSION=1.26.5
 RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz \
     && tar -C /usr/local -xzf /tmp/go.tar.gz \
     && rm /tmp/go.tar.gz
