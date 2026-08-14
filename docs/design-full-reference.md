@@ -459,6 +459,15 @@ Cognito user pool, hosted UI, authorization-code + PKCE. Tokens in `expo-secure-
 
 ## 9. Infrastructure (Terraform)
 
+> **Amended 2026-08-13, see `docs/design.md` §9 (wins on conflict, per this
+> file's own header).** Operator decision at Phase 2 kickoff: split into
+> `dev-data` (DynamoDB/S3/ECR — long-lived, near-free at rest) and
+> `dev-compute` (network/ECS/Jenkins/observability — destroyed/applied at
+> will for cost control) as separate Terraform stacks with separate state,
+> plus a `cmd/rollup export`/`import` backup path and Jenkins EBS restored
+> from the latest DLM snapshot on apply. Region is `us-west-1`. The layout
+> below is the original single-`envs/dev` design; superseded.
+
 ### Layout
 
 ```

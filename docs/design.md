@@ -425,29 +425,68 @@ Cognito user pool, hosted UI, authorization-code + PKCE. Tokens in `expo-secure-
 ## 9. Infrastructure (Terraform)
 
 ### Layout
+
+**Amended 2026-08-13 (operator decision, Phase 2 kickoff):** split into two
+independent Terraform stacks with separate state, so the operator can
+`terraform destroy`/`apply` the compute stack freely to control cost
+without risking the data layer. Rationale: DynamoDB (on-demand), S3, and
+ECR are already near-free at rest — cost with zero traffic is pennies/month
+regardless of how often compute cycles. The expensive line items (Jenkins
+EC2 ~$14/mo, its ALB ~$16/mo, NAT Gateway ~$32/mo if used) are entirely in
+compute. Splitting means destroying compute never touches data, and the
+DynamoDB table / S3 buckets / ECR repos can simply stay running indefinitely
+as a cheap, always-on foundation.
+
 ```
 infra/terraform/
-├── bootstrap/          # run once, locally: S3 state bucket + DynamoDB lock table
+├── bootstrap/            # run once, locally: shared S3 state bucket +
+│                         # DynamoDB lock table + $60 AWS Budget alarm
 ├── modules/
-│   ├── network/         # VPC, subnets, endpoints, SGs
-│   ├── data/             # DynamoDB table + GSIs, S3 buckets
-│   ├── ecr/              # 5 repos w/ lifecycle policies + scan-on-push
-│   ├── ecs-cluster/      # cluster, capacity providers, exec role
-│   ├── service-api/      # task def, service, ALB target group, autoscaling
-│   ├── service-worker/   # queue-depth-driven autoscaling
-│   ├── task-scheduled/   # reusable: EventBridge Scheduler → RunTask
-│   ├── queues/           # SQS + DLQs + redrive policies
-│   ├── auth/              # Cognito pool, client, domain
-│   ├── api-gateway/       # HTTP API, VPC Link, JWT authorizer, custom domain
-│   ├── web/                # S3 + CloudFront + OAC
-│   ├── jenkins/           # EC2, EBS, SG, IAM, ALB
-│   └── observability/     # log groups, alarms, dashboard, SNS
+│   ├── network/           # VPC, subnets, endpoints, SGs
+│   ├── data/               # DynamoDB table + GSIs, S3 (raw/exports/backups), ECR repos, SSM params
+│   ├── ecs-cluster/        # cluster, capacity providers, exec role
+│   ├── service-api/        # task def, service, ALB target group, autoscaling
+│   ├── service-worker/     # queue-depth-driven autoscaling
+│   ├── task-scheduled/     # reusable: EventBridge Scheduler → RunTask
+│   ├── queues/             # SQS + DLQs + redrive policies
+│   ├── auth/                # Cognito pool, client, domain
+│   ├── api-gateway/         # HTTP API, VPC Link, JWT authorizer, custom domain
+│   ├── web/                  # S3 + CloudFront + OAC
+│   ├── jenkins/             # EC2, EBS (sourced from latest DLM snapshot on
+│   │                        # create — see below), SG, IAM, ALB
+│   └── observability/       # log groups, alarms, dashboard, SNS
 └── envs/
-    ├── dev/    # main.tf, terraform.tfvars, backend.tf
-    └── prod/
+    ├── dev-data/    # modules/data only. Long-lived; apply once, leave running.
+    │                # prevent_destroy on the table + buckets — tearing this
+    │                # down is a deliberate, separate action.
+    ├── dev-compute/ # network + ecs-cluster + queues + jenkins + observability
+    │                # (+ service-api/auth/api-gateway/web from Phase 3+).
+    │                # This is what gets destroyed/applied at will.
+    │                # Reads dev-data's outputs via terraform_remote_state.
+    └── prod/        # not built yet
 ```
 
-(Sections 9-16 covering Terraform details, Jenkins/JCasC, Security/SSRF, cost estimate, full phased build plan, repo layout, seed company list, and open questions are summarized above in the working agreement and phase plan — implement strictly per §0 and the Phase 0/1 scope in §17 below. Ask me before doing any AWS/Terraform/Jenkins/auth/Expo work, since that's out of scope for this session.)
+**Backup/restore** (for the rarer case of tearing down `dev-data` itself,
+e.g. pausing the project for a true $0 footprint): `cmd/rollup export` dumps
+the whole table to a gzipped JSON-lines file in the `backups/` S3 bucket;
+`cmd/rollup import` restores from the latest one into a fresh table. That
+bucket is the one thing that must survive for this to work.
+
+**Jenkins EBS persistence across compute-stack teardown:** the `jenkins`
+module's EBS volume resource sources `snapshot_id` from the most recent
+DLM-created snapshot (data source, most-recent-by-tag) if one exists,
+falling back to blank on first-ever apply. Combined with the existing daily
+DLM snapshot policy (7-day retention), destroying and reapplying the whole
+compute stack — not just terminating the EC2 instance — restores
+`JENKINS_HOME` automatically, since DLM snapshots aren't deleted when the
+Terraform-managed volume/policy resources that created them are.
+
+**Region:** `us-west-1` (operator's existing AWS account/default region).
+Confirmed compatible with everything in this phase (2 AZs, which is what
+the network design wants anyway). One gap: **Amazon Bedrock is not
+available in `us-west-1`** — irrelevant until Phase 5, addressed then via
+an explicit cross-region client (e.g. targeting `us-west-2`) rather than
+moving the whole stack.
 
 ## 17. First Prompt for Claude Code
 
