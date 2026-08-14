@@ -126,6 +126,20 @@ func (s *Store) EnsureTable(ctx context.Context) error {
 	if err := waiter.Wait(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(TableName)}, tableWaitTimeout); err != nil {
 		return fmt.Errorf("wait for table active: %w", err)
 	}
+
+	// Mirrors modules/data/dynamodb.tf's ttl block — the DEDUP#<contentHash>
+	// marker (docs/design.md §5) relies on this to expire itself after 30
+	// days without a scheduled cleanup job.
+	if _, err := s.client.UpdateTimeToLive(ctx, &dynamodb.UpdateTimeToLiveInput{
+		TableName: aws.String(TableName),
+		TimeToLiveSpecification: &types.TimeToLiveSpecification{
+			AttributeName: aws.String("ttl"),
+			Enabled:       aws.Bool(true),
+		},
+	}); err != nil {
+		return fmt.Errorf("enable ttl: %w", err)
+	}
+
 	slog.Info("store: table created", "table", TableName, "elapsed", time.Since(start).String())
 	return nil
 }

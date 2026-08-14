@@ -44,10 +44,17 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filtered := (roleFilter != "" || tierFilter != "" || !since.IsZero())
+	// Closed postings are always excluded here, unconditionally — not a
+	// user-facing filter param but the definition of "active" (docs/
+	// design.md §4: a posting disappearing from an ATS feed means it
+	// closed, and gets excluded from active stats while staying in the
+	// store for historical trend queries).
 	allowed := make(map[string]bool, len(postings))
 	postingCount := 0
 	for _, p := range postings {
+		if p.ClosedAt != nil {
+			continue
+		}
 		if roleFilter != "" && string(p.RoleFamily) != roleFilter {
 			continue
 		}
@@ -60,13 +67,10 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 		allowed[p.ID] = true
 		postingCount++
 	}
-	if !filtered {
-		postingCount = len(postings)
-	}
 
 	kept := make([]model.PostingSkill, 0, len(edges))
 	for _, e := range edges {
-		if filtered && !allowed[e.PostingID] {
+		if !allowed[e.PostingID] {
 			continue
 		}
 		if requiredFilter == "true" && !e.Required {

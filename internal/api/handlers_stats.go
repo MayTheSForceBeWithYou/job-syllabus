@@ -16,15 +16,35 @@ import (
 func (s *Server) handleStatsOverview(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	postings, err := s.Store.ListAllPostings(ctx)
+	allPostings, err := s.Store.ListAllPostings(ctx)
 	if err != nil {
 		writeProblem(w, r, http.StatusInternalServerError, "failed to list postings", err.Error())
 		return
 	}
-	edges, err := s.Store.ListAllSkillEdges(ctx)
+	allEdges, err := s.Store.ListAllSkillEdges(ctx)
 	if err != nil {
 		writeProblem(w, r, http.StatusInternalServerError, "failed to list skill edges", err.Error())
 		return
+	}
+
+	// Active only (docs/design.md §4): a closed posting isn't deleted, but
+	// it drops out of every stat here just as it does from GET /v1/skills
+	// — this is the same corpus definition "500+ postings"-style DoD
+	// language and cmd/rollup's reconciliation both mean.
+	active := make(map[string]bool, len(allPostings))
+	postings := allPostings[:0:0]
+	for _, p := range allPostings {
+		if p.ClosedAt != nil {
+			continue
+		}
+		active[p.ID] = true
+		postings = append(postings, p)
+	}
+	edges := allEdges[:0:0]
+	for _, e := range allEdges {
+		if active[e.PostingID] {
+			edges = append(edges, e)
+		}
 	}
 
 	var lastSeen time.Time

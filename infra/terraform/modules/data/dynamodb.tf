@@ -55,6 +55,16 @@ resource "aws_dynamodb_table" "main" {
     enabled = true
   }
 
+  # Backs the DEDUP#<contentHash> marker's 30-day expiry (docs/design.md
+  # §5) — DynamoDB deletes items whose `ttl` attribute (epoch seconds) has
+  # passed, no scheduled job required. Only items that set `ttl` are
+  # affected; Posting/Skill/PostingSkill items never set it and live
+  # forever.
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
   # This is the one resource in the project we're most protective of.
   # Destroying it is only ever a deliberate action (with a cmd/rollup export
   # taken first) — never a side effect of cycling the compute stack, and

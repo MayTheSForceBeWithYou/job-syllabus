@@ -116,5 +116,40 @@ func (s *Store) UpsertPosting(ctx context.Context, p model.Posting) (stored mode
 	return *existing, false, nil
 }
 
+// ClosePosting stamps ClosedAt — docs/design.md §4's lifecycle rule: a
+// posting disappearing from an ATS feed means it closed, so it's marked
+// and excluded from active stats, never deleted (kept for historical
+// trend). No-op if the posting is already closed or doesn't exist.
+func (s *Store) ClosePosting(ctx context.Context, id string, closedAt time.Time) error {
+	existing, err := s.GetPosting(ctx, id)
+	if err != nil {
+		return err
+	}
+	if existing == nil || existing.ClosedAt != nil {
+		return nil
+	}
+	existing.ClosedAt = &closedAt
+	return s.PutPosting(ctx, *existing)
+}
+
+// DeletePosting removes a posting outright. Only used to unwind a
+// just-created posting that turned out to be a cross-posted duplicate of
+// an already-known one (see cmd/ingest's dedup handling) — a posting that
+// was ever genuinely live is never deleted otherwise (ClosedAt marks it
+// closed instead, docs/design.md §4's lifecycle rule).
+func (s *Store) DeletePosting(ctx context.Context, id string) error {
+	_, err := s.client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+		TableName: aws.String(TableName),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: postingPK(id)},
+			"SK": &types.AttributeValueMemberS{Value: "META"},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("delete posting %s: %w", id, err)
+	}
+	return nil
+}
+
 // ErrNotFound is returned by lookups that expect the item to exist.
 var ErrNotFound = errors.New("not found")

@@ -113,7 +113,7 @@ func runIngest(ctx context.Context, s *store.Store, logger *slog.Logger) {
 	logger.Info("ingest run starting", "companies", len(companies), "skills", len(skills), "companyTimeout", companyTimeout.String())
 
 	now := time.Now().UTC()
-	var totalFetched, totalMatched, totalCreated, totalUpdated, totalSkipped, totalSkillEdges int
+	var totalFetched, totalMatched, totalCreated, totalUpdated, totalClosed, totalSkipped, totalSkillEdges int
 
 	for i, c := range companies {
 		logger.Info("company starting", "index", i+1, "of", len(companies), "company", c.Slug, "ats", c.ATS)
@@ -153,6 +153,27 @@ func runIngest(ctx context.Context, s *store.Store, logger *slog.Logger) {
 				logger.Warn("failed to store posting", "company", c.Slug, "postingId", posting.ID, "error", err.Error())
 				continue
 			}
+
+			// Only a genuinely new posting ID needs the cross-post check —
+			// an already-known posting was claimed under this same content
+			// hash the first time it was created, so re-checking it on
+			// every re-ingest would find its own marker and misfire.
+			if wasCreated {
+				firstSeen, err := s.ClaimContentHash(ctx, stored.ContentHash)
+				if err != nil {
+					logger.Warn("dedup content-hash check failed", "company", c.Slug, "postingId", stored.ID, "error", err.Error())
+				} else if !firstSeen {
+					// Same job, cross-posted under a different URL — collapse
+					// to whichever posting claimed this content first
+					// (docs/design.md §5) by discarding this one outright.
+					if err := s.DeletePosting(ctx, stored.ID); err != nil {
+						logger.Warn("failed to remove cross-posted duplicate", "company", c.Slug, "postingId", stored.ID, "error", err.Error())
+					}
+					logger.Info("skipping cross-posted duplicate", "company", c.Slug, "postingId", stored.ID, "title", stored.Title)
+					continue
+				}
+			}
+
 			if wasCreated {
 				created++
 			} else {
@@ -170,14 +191,55 @@ func runIngest(ctx context.Context, s *store.Store, logger *slog.Logger) {
 		totalUpdated += updated
 		totalSkillEdges += skillEdges
 
+		closed, err := closeStalePostings(ctx, s, c.Slug, raw, now)
+		if err != nil {
+			logger.Warn("posting lifecycle check failed", "company", c.Slug, "error", err.Error())
+		}
+		totalClosed += closed
+
 		logger.Info("company complete", "company", c.Slug,
-			"fetched", len(raw), "roleMatched", len(matched), "new", created, "updated", updated, "skillEdges", skillEdges)
+			"fetched", len(raw), "roleMatched", len(matched), "new", created, "updated", updated, "closed", closed, "skillEdges", skillEdges)
 	}
 
 	logger.Info("ingest run complete",
 		"companies", len(companies), "skipped", totalSkipped,
 		"fetched", totalFetched, "roleMatched", totalMatched,
-		"new", totalCreated, "updated", totalUpdated, "skillEdges", totalSkillEdges)
+		"new", totalCreated, "updated", totalUpdated, "closed", totalClosed, "skillEdges", totalSkillEdges)
+}
+
+// closeStalePostings implements docs/design.md §4's lifecycle rule: a
+// posting this company previously had open, but which no longer appears
+// anywhere in this run's raw fetch (role-matched or not — a title/role
+// change isn't "closed"), has left the ATS feed and is marked closed.
+// Compares against the full raw fetch, not just the role-matched subset,
+// so postings never stored (didn't match roleFilters) can't spuriously
+// "close" postings that are still genuinely live at the company.
+func closeStalePostings(ctx context.Context, s *store.Store, companySlug string, raw []connectors.RawPosting, now time.Time) (int, error) {
+	current := make(map[string]bool, len(raw))
+	for _, rp := range raw {
+		canonicalURL, err := dedupe.CanonicalizeURL(rp.URL)
+		if err != nil {
+			continue // unparseable URL never became a stored posting either
+		}
+		current[dedupe.PostingID(canonicalURL)] = true
+	}
+
+	known, err := s.ListPostingsByCompany(ctx, companySlug)
+	if err != nil {
+		return 0, fmt.Errorf("list known postings: %w", err)
+	}
+
+	closed := 0
+	for _, p := range known {
+		if p.ClosedAt != nil || current[p.ID] {
+			continue
+		}
+		if err := s.ClosePosting(ctx, p.ID, now); err != nil {
+			return closed, fmt.Errorf("close posting %s: %w", p.ID, err)
+		}
+		closed++
+	}
+	return closed, nil
 }
 
 // extractAndStoreSkills runs Stages 1-3 (normalize, segment, dictionary
@@ -257,18 +319,41 @@ func toPosting(c connectors.CompanyConfig, rp connectors.RawPosting, now time.Ti
 }
 
 func runReport(ctx context.Context, s *store.Store) {
-	postings, err := s.ListAllPostings(ctx)
+	allPostings, err := s.ListAllPostings(ctx)
 	if err != nil {
 		log.Fatalf("list postings: %v", err)
 	}
-	if len(postings) == 0 {
+	if len(allPostings) == 0 {
 		fmt.Println("No postings in the store yet — run `make ingest` first.")
 		return
 	}
 
-	edges, err := s.ListAllSkillEdges(ctx)
+	// Active only (docs/design.md §4): a closed posting stays in the store
+	// for historical trend but drops out of this ranked table, matching
+	// GET /v1/skills and /v1/stats/overview's same definition of "active."
+	active := make(map[string]bool, len(allPostings))
+	postings := allPostings[:0:0]
+	for _, p := range allPostings {
+		if p.ClosedAt != nil {
+			continue
+		}
+		active[p.ID] = true
+		postings = append(postings, p)
+	}
+	if len(postings) == 0 {
+		fmt.Println("No active postings in the store — everything ingested so far has closed.")
+		return
+	}
+
+	allEdges, err := s.ListAllSkillEdges(ctx)
 	if err != nil {
 		log.Fatalf("list skill edges: %v", err)
+	}
+	edges := allEdges[:0:0]
+	for _, e := range allEdges {
+		if active[e.PostingID] {
+			edges = append(edges, e)
+		}
 	}
 
 	skillsPath := envOr("SKILLS_FILE", "data/skills.yaml")
