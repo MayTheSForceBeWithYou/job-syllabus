@@ -16,6 +16,14 @@ jenkins:
   numExecutors: 0 # all work runs on ephemeral Fargate agents — never on the controller
   mode: EXCLUSIVE
   labelString: "controller"
+  # The initial HTTP request to jenkinsUrl (port 8080) only negotiates the
+  # protocol and hands back a SEPARATE port for the actual JNLP4-connect
+  # TCP connection — random/OS-assigned if left unset, confirmed against a
+  # real boot ("provided port:42555 is not reachable"), which a security
+  # group obviously can't allowlist in advance. Fixed here so
+  # modules/network/security_groups.tf's jenkins_ec2 SG has one specific
+  # port to open from the fargate SG.
+  slaveAgentPort: 50000
 
   securityRealm:
     local:

@@ -52,6 +52,19 @@ resource "aws_security_group" "jenkins_ec2" {
     security_groups = [aws_security_group.fargate.id]
   }
 
+  # The actual JNLP4-connect TCP port (ci/jenkins.yaml's slaveAgentPort) -
+  # a SEPARATE connection from the port-8080 handshake above. Confirmed
+  # against a real boot: without a fixed port pinned in JCasC and opened
+  # here, Jenkins hands agents a random OS-assigned port every time,
+  # which no security group can allowlist in advance.
+  ingress {
+    description     = "JNLP agent TCP port from the Jenkins Fargate build agents"
+    from_port       = 50000
+    to_port         = 50000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.fargate.id]
+  }
+
   # EC2 Instance Connect (browser-based SSH from the AWS console) proxies
   # through a per-region AWS-owned IP range, not the operator's own IP -
   # https://ip-ranges.amazonaws.com, service EC2_INSTANCE_CONNECT,
