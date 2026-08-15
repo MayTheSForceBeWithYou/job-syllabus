@@ -68,17 +68,22 @@ module "service_api" {
 # domain (module.web, below) + localhost for `expo start --web` dev — all
 # three need to be Hosted-UI-registered callback targets since a single
 # Cognito app client is shared across every target this one Expo codebase
-# builds for (docs/design.md §8: "one Expo codebase").
+# builds for (docs/design.md §8: "one Expo codebase"). "jobsyllabus://",
+# bare scheme with no path — expo-auth-session's makeRedirectUri()
+# explicitly does NOT append a `path` option on native, only on web/Expo
+# Go, confirmed against the current SDK 57 docs before wiring
+# mobile/src/auth; an earlier "jobsyllabus://redirect" here would never
+# have matched what the app actually requests.
 module "auth" {
   source = "../../modules/auth"
 
   callback_urls = [
-    "jobsyllabus://redirect",
+    "jobsyllabus://",
     "https://${module.web.domain_name}",
     "http://localhost:8081",
   ]
   logout_urls = [
-    "jobsyllabus://redirect",
+    "jobsyllabus://",
     "https://${module.web.domain_name}",
     "http://localhost:8081",
   ]

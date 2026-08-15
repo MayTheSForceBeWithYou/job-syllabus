@@ -3,9 +3,8 @@
 // anyone touches the UI.
 //
 // api-build, worker-build, ingest-build, rollup-build, infra-plan,
-// infra-apply, backfill, and reextract are defined here as of Phase 5 — the
-// pipeline table in §10 also lists client-build (needs the Expo app, Phase
-// 6). Add that job here when its phase lands, not before.
+// infra-apply, backfill, reextract, and client-build are all defined here
+// as of Phase 6.
 //
 // ingest-build/rollup-build exist because modules/task-scheduled's
 // scheduled RunTask targets need a real, versioned image to pull — a real
@@ -135,6 +134,25 @@ pipelineJob('reextract') {
             }
             scriptPath('ci/Jenkinsfile.reextract')
         }
+    }
+}
+
+pipelineJob('client-build') {
+    description('docs/design.md §8/§10: npm ci -> tsc --noEmit -> `expo export -p web` -> S3 sync -> CloudFront invalidation -> smoke test. Runs on fargate-agent (already carries Node 20 + eas-cli, see ci/agent.Dockerfile).')
+    definition {
+        cpsScm {
+            scm {
+                git {
+                    remote { url(repoUrl) }
+                    branch('*/main')
+                }
+            }
+            scriptPath('ci/Jenkinsfile.client-build')
+        }
+    }
+    triggers {
+        // Same rationale as api-build's trigger — see that job's comment.
+        scm('H/5 * * * *')
     }
 }
 

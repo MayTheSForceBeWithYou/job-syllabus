@@ -1,0 +1,115 @@
+// docs/design.md §8/§10 Phase 6: typecheck -> `expo export -p web` (static
+// SPA bundle, app.json's web.output="single") -> sync to S3 -> invalidate
+// CloudFront -> smoke test the real URL. Runs on the existing
+// `fargate-agent` label, not a new agent image — ci/agent.Dockerfile
+// already carries Node 20 + eas-cli, added ahead of need during an
+// earlier phase specifically for this job (see that Dockerfile's own
+// comment). No Kaniko/Docker build at all: this deploys a static site to
+// S3, not a container to ECS, so it doesn't need the api-build/
+// worker-build pattern's separate build-agent split.
+pipeline {
+    agent { label 'fargate-agent' }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+    }
+
+    triggers {
+        // Same rationale as api-build's trigger — GitHub's webhook
+        // servers can't reach this Jenkins (ALB IP-locked to the
+        // operator, §10).
+        scm('H/5 * * * *')
+    }
+
+    environment {
+        AWS_REGION = 'us-west-1'
+    }
+
+    stages {
+        stage('Install') {
+            steps {
+                dir('mobile') {
+                    sh 'npm ci'
+                }
+            }
+        }
+        stage('Typecheck') {
+            steps {
+                dir('mobile') {
+                    sh 'npx tsc --noEmit'
+                }
+            }
+        }
+        stage('Export web build') {
+            steps {
+                dir('mobile') {
+                    // EXPO_PUBLIC_* vars are inlined into the JS bundle at
+                    // export time, not read at runtime — sourced fresh
+                    // from SSM here rather than committed to .env, same
+                    // "apply-specific values live in SSM, not the repo"
+                    // discipline as every other real config value in this
+                    // project (Jenkins admin password, API URL, etc).
+                    sh '''
+                      WEB_URL=$(aws ssm get-parameter --name /job-syllabus/web/url --region "$AWS_REGION" --query Parameter.Value --output text)
+
+                      export EXPO_PUBLIC_API_URL=$(aws ssm get-parameter --name /job-syllabus/api/url --region "$AWS_REGION" --query Parameter.Value --output text)
+                      export EXPO_PUBLIC_COGNITO_DOMAIN=$(aws ssm get-parameter --name /job-syllabus/auth/hosted_ui_domain --region "$AWS_REGION" --query Parameter.Value --output text)
+                      export EXPO_PUBLIC_COGNITO_CLIENT_ID=$(aws ssm get-parameter --name /job-syllabus/auth/user_pool_client_id --region "$AWS_REGION" --query Parameter.Value --output text)
+                      export EXPO_PUBLIC_WEB_REDIRECT_URI="$WEB_URL"
+
+                      npx expo export -p web
+                    '''
+                }
+            }
+        }
+        stage('Deploy to S3') {
+            steps {
+                dir('mobile') {
+                    sh '''
+                      BUCKET=$(aws ssm get-parameter --name /job-syllabus/web/bucket_name --region "$AWS_REGION" --query Parameter.Value --output text)
+                      aws s3 sync dist/ "s3://$BUCKET/" --delete --region "$AWS_REGION"
+                    '''
+                }
+            }
+        }
+        stage('Invalidate CloudFront') {
+            steps {
+                sh '''
+                  DISTRIBUTION_ID=$(aws ssm get-parameter --name /job-syllabus/web/distribution_id --region "$AWS_REGION" --query Parameter.Value --output text)
+                  aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*" --region "$AWS_REGION"
+                '''
+            }
+        }
+        stage('Smoke test') {
+            steps {
+                sh '''
+                  WEB_URL=$(aws ssm get-parameter --name /job-syllabus/web/url --region "$AWS_REGION" --query Parameter.Value --output text)
+
+                  # CloudFront invalidation is asynchronous — poll rather
+                  # than trusting the create-invalidation call's own exit
+                  # code, same "the API accepting a request isn't proof
+                  # it's live yet" lesson as every scheduled-task smoke
+                  # test elsewhere in this project.
+                  # Checks the <title> tag specifically, not arbitrary page
+                  # text — app.json's web.output="single" is a
+                  # client-rendered SPA, so anything only shown by
+                  # component code (like the "Job Syllabus" heading text)
+                  # won't exist in curl's raw HTML at all; the <title> is
+                  # the one piece of real content Expo's static index.html
+                  # always carries.
+                  for i in $(seq 1 20); do
+                    BODY=$(curl -s "$WEB_URL")
+                    if echo "$BODY" | grep -q "<title>Job Syllabus</title>"; then
+                      echo "Smoke test passed: $WEB_URL"
+                      exit 0
+                    fi
+                    sleep 15
+                  done
+                  echo "Smoke test failed: $WEB_URL never served expected content" >&2
+                  exit 1
+                '''
+            }
+        }
+    }
+}
