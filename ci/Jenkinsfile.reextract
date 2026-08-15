@@ -1,0 +1,69 @@
+// docs/design.md §6 "Re-extraction": bumping extract.Version (e.g. after
+// approving a review-queue term whose new alias should now also match
+// existing postings) means the corpus needs to be re-run through
+// cmd/worker. `cmd/rollup reextract` does the scanning + re-enqueueing;
+// this job runs it on demand via the SAME task definition
+// job-syllabus-rollup-reconcile's daily schedule already uses (modules/
+// task-scheduled), overriding just the container command — same pattern
+// ci/Jenkinsfile.backfill uses for job-syllabus-ingest, and same reason:
+// exercise the exact image/task role/config the scheduled run does, not a
+// parallel bespoke path. No separate build pipeline needed — rollup-build
+// already produces the image both `reconcile` and `reextract` run from.
+//
+// Manual only — no triggers block. Re-extraction re-processes the whole
+// corpus (bounded to postings behind current ExtractVer, but that can
+// still be everything right after a Version bump), so it's not something
+// to fire on a schedule.
+pipeline {
+    agent { label 'fargate-agent' }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+    }
+
+    environment {
+        AWS_REGION      = 'us-west-1'
+        ECS_CLUSTER     = 'job-syllabus'
+        TASK_DEF_FAMILY = 'job-syllabus-rollup-reconcile'
+        CONTAINER_NAME  = 'rollup-reconcile'
+        LOG_GROUP       = '/ecs/job-syllabus'
+    }
+
+    stages {
+        stage('Run reextract') {
+            steps {
+                // Reuses the exact subnets/security-group Terraform already
+                // wired for this same task definition's scheduled
+                // invocation, same as Jenkinsfile.backfill.
+                sh '''
+                  SCHEDULE_NET=$(aws scheduler get-schedule --name job-syllabus-rollup-reconcile --group-name default \
+                    --region "$AWS_REGION" --query 'Target.EcsParameters.NetworkConfiguration.awsvpcConfiguration' --output json)
+                  SUBNETS=$(echo "$SCHEDULE_NET" | jq -c '.Subnets')
+                  SGS=$(echo "$SCHEDULE_NET" | jq -c '.SecurityGroups')
+                  NETWORK_CONFIG=$(jq -n --argjson subnets "$SUBNETS" --argjson sgs "$SGS" \
+                    '{awsvpcConfiguration:{subnets:$subnets,securityGroups:$sgs,assignPublicIp:"ENABLED"}}')
+
+                  TASK_ARN=$(aws ecs run-task --cluster "$ECS_CLUSTER" --task-definition "$TASK_DEF_FAMILY" \
+                    --launch-type FARGATE --region "$AWS_REGION" \
+                    --network-configuration "$NETWORK_CONFIG" \
+                    --overrides "{\\"containerOverrides\\":[{\\"name\\":\\"$CONTAINER_NAME\\",\\"command\\":[\\"reextract\\"]}]}" \
+                    --query 'tasks[0].taskArn' --output text)
+
+                  if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
+                    echo "run-task did not return a task ARN" >&2
+                    exit 1
+                  fi
+                  echo "Started $TASK_ARN"
+
+                  aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" --region "$AWS_REGION"
+
+                  EXIT_CODE=$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" --region "$AWS_REGION" \
+                    --query 'tasks[0].containers[0].exitCode' --output text)
+                  echo "Container exited $EXIT_CODE"
+                  [ "$EXIT_CODE" = "0" ]
+                '''
+            }
+        }
+    }
+}

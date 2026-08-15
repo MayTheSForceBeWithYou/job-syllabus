@@ -3,10 +3,9 @@
 // anyone touches the UI.
 //
 // api-build, worker-build, ingest-build, rollup-build, infra-plan,
-// infra-apply, and backfill are defined here as of Phase 4 — the pipeline
-// table in §10 also lists client-build (needs the Expo app, Phase 6) and
-// reextract (needs ExtractVer-driven re-enqueueing, not yet built — see
-// NEXT_STEPS.md). Add those jobs here when their phases land, not before.
+// infra-apply, backfill, and reextract are defined here as of Phase 5 — the
+// pipeline table in §10 also lists client-build (needs the Expo app, Phase
+// 6). Add that job here when its phase lands, not before.
 //
 // ingest-build/rollup-build exist because modules/task-scheduled's
 // scheduled RunTask targets need a real, versioned image to pull — a real
@@ -121,6 +120,21 @@ pipelineJob('rollup-build') {
     }
     triggers {
         scm('H/5 * * * *')
+    }
+}
+
+pipelineJob('reextract') {
+    description('docs/design.md §6 "Re-extraction": re-enqueues every posting whose ExtractVer is behind the current dictionary/prompt version (cmd/rollup reextract) via job-syllabus-rollup-reconcile\'s task definition, command overridden. Manual only.')
+    definition {
+        cpsScm {
+            scm {
+                git {
+                    remote { url(repoUrl) }
+                    branch('*/main')
+                }
+            }
+            scriptPath('ci/Jenkinsfile.reextract')
+        }
     }
 }
 

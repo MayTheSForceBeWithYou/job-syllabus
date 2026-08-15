@@ -81,12 +81,28 @@ pipeline {
         }
         stage('Register task definition') {
             steps {
+                // modules/task-scheduled's aws_ecs_task_definition has
+                // lifecycle.ignore_changes on container_definitions — after
+                // Terraform's initial bootstrap revision, THIS is what
+                // actually owns the live container_definitions, not
+                // Terraform. That includes environment vars, not just the
+                // image tag: Phase 5's `reextract` subcommand needs
+                // EXTRACT_QUEUE_URL, which Terraform's module block now
+                // sets but can never push to the real running task
+                // definition on its own — so this upserts it every build,
+                // self-healing regardless of what the currently-registered
+                // revision happens to have.
                 sh '''
+                  QUEUE_URL=$(aws sqs get-queue-url --queue-name job-syllabus-extract-queue \
+                    --region "$AWS_REGION" --query QueueUrl --output text)
+
                   aws ecs describe-task-definition --task-definition "$TASK_DEF_FAMILY" --region "$AWS_REGION" \
                     --query 'taskDefinition' > current-task-def.json
 
-                  jq --arg IMAGE "$ECR_REPO:$IMAGE_TAG" \
+                  jq --arg IMAGE "$ECR_REPO:$IMAGE_TAG" --arg QUEUE_URL "$QUEUE_URL" \
                     '.containerDefinitions[0].image = $IMAGE
+                     | .containerDefinitions[0].environment = ((.containerDefinitions[0].environment // [])
+                         | map(select(.name != "EXTRACT_QUEUE_URL")) + [{name: "EXTRACT_QUEUE_URL", value: $QUEUE_URL}])
                      | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
                            .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
                     current-task-def.json > new-task-def.json
