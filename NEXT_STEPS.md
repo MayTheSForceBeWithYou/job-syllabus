@@ -1,6 +1,6 @@
 # Next steps
 
-**Phase 0 through Phase 4 are all complete.** Phase 0/1 DoD met
+**Phase 0 through Phase 5 are all complete.** Phase 0/1 DoD met
 (`docs/design.md` §17): `make ingest && make report` prints a ranked
 skill-frequency table from real postings — see PROGRESS.md for the actual
 output. The §6 validation gate also passes (precision 1.000, recall
@@ -15,21 +15,41 @@ mostly met: all six Tier-1 connectors, a 49-company registry, a real
 SQS-queued `cmd/worker`, idempotent counters, and daily EventBridge
 scheduling are all live in production; the one line item short is 500+
 postings (real number 158) — an honest, explained real-world-volume
-finding, not a bug — see [docs/phase-4.md](docs/phase-4.md).
-`docs/phase-0.md` through `docs/phase-4.md` writeups are all done (§0.6).
+finding, not a bug — see [docs/phase-4.md](docs/phase-4.md). Phase 5 DoD
+met: unknown terms surface in `GET /v1/reviews`, and approving one via the
+API updates the live (DynamoDB-backed) dictionary immediately, with
+`cmd/rollup reextract` picking it up across the existing corpus — see
+[docs/phase-5.md](docs/phase-5.md).
+`docs/phase-0.md` through `docs/phase-5.md` writeups are all done (§0.6).
 
-## Phase 5 and beyond (not started)
+## Phase 6 and beyond (not started)
 
-Per `docs/design.md`'s phase list: Stage 4 (Bedrock fallback) and Stage 5
-(review queue) of extraction, auth (Phase 6's Cognito JWT authorizer —
+Per `docs/design.md`'s phase list: auth (Cognito JWT authorizer —
 `service-api` is locked to the operator's IP by an application-layer
 allowlist in the meantime, see `internal/api/ipallow.go`), role-family
 classification (every posting is still `RoleFamily: unclassified`, so
 `STAT#` counters currently only ever have one bucket), and the Expo/mobile
-client. `ci/jobs.groovy` also still defers a `reextract` job (needs
-`ExtractVer`-driven re-enqueueing across the whole corpus, not yet built),
-and `infra-plan`'s trigger is push-based rather than true PR-discovery
-pending GitHub credentials in Jenkins.
+client. `infra-plan`'s trigger is push-based rather than true PR-discovery
+pending GitHub credentials in Jenkins — the same missing-credential gap
+Phase 5 hit for `data/skills.yaml` writeback (see docs/phase-5.md); worth
+solving once, for both, if this project ever needs a GitHub App/PAT.
+Stage 4's escalation-to-Sonnet path (docs/design.md §6: "escalate to
+Sonnet if precision on the validation set is short of target") hasn't
+been needed — Haiku alone has kept the §6 gate passing.
+
+## Keeping `data/skills.yaml` in sync with DynamoDB's live dictionary
+
+Phase 5's review-queue approvals write straight to DynamoDB, not to the
+git-tracked `data/skills.yaml` seed (no GitHub write credential exists in
+this project — see docs/phase-5.md's "DynamoDB instead of a git commit").
+That means the two drift apart over time: DynamoDB is always the live,
+authoritative dictionary, but `data/skills.yaml` only reflects whatever
+was true at the last manual sync. Not urgent (a fresh deploy still works
+correctly — it just starts with fewer approved skills until the next
+`RefreshSkills` reload), but worth a small `cmd/rollup export-skills` (or
+similar) that dumps DynamoDB's canonical skills as yaml, to diff by hand
+against `data/skills.yaml` periodically rather than letting the drift
+become invisible.
 
 ## Growing the company registry toward 500+ postings
 

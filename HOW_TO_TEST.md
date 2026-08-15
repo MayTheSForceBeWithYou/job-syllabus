@@ -4,14 +4,16 @@ This covers what actually works today. It'll grow as more of
 `docs/design.md` gets implemented — check the date below against
 `git log` if it's been a while.
 
-**Last updated:** 2026-08-15 — Phase 0-4 complete, DoD and §6 validation
+**Last updated:** 2026-08-15 — Phase 0-5 complete, DoD and §6 validation
 gate both passing, real AWS infrastructure + Jenkins + `service-api` +
-queue-based ingestion all live. Sections 1-5 below (local pipeline) are
-mostly unchanged from Phase 1, but note section 3's update — `cmd/ingest`
-no longer extracts inline (Phase 4), so seeing real skill data locally
-now needs `make worker` running too. Section 6 covers Phase 2's
-infrastructure, section 7 Phase 3's deployed API, section 8 (new) Phase
-4's real ingestion pipeline.
+queue-based ingestion + Bedrock fallback/review queue all live. Sections
+1-5 below (local pipeline) are mostly unchanged from Phase 1, but note
+section 3's update — `cmd/ingest` no longer extracts inline (Phase 4), so
+seeing real skill data locally now needs `make worker` running too, and
+`make worker` locally runs with `BEDROCK_ENABLED=false` (Phase 5) since
+LocalStack can't emulate Bedrock. Section 6 covers Phase 2's
+infrastructure, section 7 Phase 3's deployed API, section 8 Phase 4's real
+ingestion pipeline, section 9 (new) Phase 5's review queue.
 
 ## Prerequisites
 
@@ -341,3 +343,93 @@ since those run as one-shot scheduled tasks, not long-lived services) and
 already-built `ingest` image with `INGEST_ONLY_COMPANY` set). All four are
 seeded by `ci/jobs.groovy`, visible in the same Jenkins instance as
 section 6.
+
+## 9. Testing the review queue (Phase 5)
+
+This needs the same AWS CLI credentials + `API_URL` as section 7.
+
+**Watch unknown terms accumulate**: `cmd/worker` writes to the review
+queue whenever a Bedrock finding doesn't match any known skill (yaml or
+DynamoDB-approved). After a normal ingest+extract cycle:
+
+```
+curl "$API_URL/v1/reviews"
+```
+
+Sorted by occurrence count, each with a category guess and up to 5
+example evidence spans. Empty is a legitimate result if nothing unmatched
+has been seen recently — not a bug, just a quiet corpus.
+
+**Triage a term** — three actions, `POST /v1/reviews/{term}` (URL-encode
+spaces in the term):
+
+```
+# Approve as a brand-new skill:
+curl -X POST "$API_URL/v1/reviews/octane%20render" -H 'Content-Type: application/json' \
+  -d '{"action":"create","category":"engines"}'
+
+# Merge into an existing skill instead (e.g. a paraphrase of something already tracked):
+curl -X POST "$API_URL/v1/reviews/helix%20core%20p4v%20plugin" -H 'Content-Type: application/json' \
+  -d '{"action":"alias","mergeIntoSkillId":"perforce"}'
+
+# Dismiss as noise — permanent, won't resurface even if the same phrase reappears:
+curl -X POST "$API_URL/v1/reviews/team%20player" -H 'Content-Type: application/json' \
+  -d '{"action":"reject"}'
+```
+
+Each of these was exercised locally against DynamoDB Local before ever
+touching real AWS — seed a fake `REVIEW#PENDING` item directly (Bedrock is
+disabled locally, so nothing populates the queue on its own):
+
+```
+aws dynamodb put-item --table-name jobsyllabus --endpoint-url http://localhost:8000 \
+  --item '{"PK":{"S":"REVIEW#PENDING"},"SK":{"S":"TERM#octane render"},"entityType":{"S":"review"},"term":{"S":"octane render"},"category":{"S":"engines"},"count":{"N":"5"},"evidence":{"L":[]}}'
+```
+
+then run `cmd/api` locally (`DYNAMODB_ENDPOINT=http://localhost:8000 go run ./cmd/api`)
+and hit its `/v1/reviews*` routes the same way.
+
+**Confirm an approval actually reached the dictionary**: `GET
+/v1/skills/{id}` should return the newly-created (or newly-aliased) skill
+immediately — `RefreshSkills` runs synchronously as part of the
+create/alias handler, not just on the 5-minute background tick, precisely
+so this is observable right away:
+
+```
+curl "$API_URL/v1/skills/octane-render"
+```
+
+**Confirm re-extraction actually re-processes the corpus**: trigger the
+`reextract` Jenkins job (manual, same `job-syllabus-rollup-reconcile` task
+definition `backfill`/`rollup-build` already use, command overridden), or
+run the equivalent task manually — same `aws scheduler get-schedule` /
+`aws ecs run-task` pattern as section 8's manual triggers, but against the
+`job-syllabus-rollup-reconcile` schedule name and a `"command":
+["reextract"]` container override instead of an environment override.
+Watch its own log line for the scanned/enqueued/skipped counts:
+
+```
+aws logs filter-log-events --log-group-name /ecs/job-syllabus --region us-west-1 \
+  --filter-pattern "reextract:" --query 'events[].message' --output text
+```
+
+**Sanity-check Bedrock itself is reachable** (useful before blaming the
+review queue for staying empty) — a direct `InvokeModel` call against the
+same cross-region inference profile `internal/bedrock.ModelID` uses:
+
+```
+echo '{"anthropic_version":"bedrock-2023-05-31","max_tokens":50,"temperature":0,"messages":[{"role":"user","content":"Reply with exactly: OK"}]}' > /tmp/body.json
+aws bedrock-runtime invoke-model --region us-west-2 \
+  --model-id us.anthropic.claude-haiku-4-5-20251001-v1:0 \
+  --content-type application/json --accept application/json \
+  --body fileb:///tmp/body.json /tmp/out.json
+cat /tmp/out.json
+```
+
+If this 403s from your own credentials, the worker's IAM role wouldn't be
+your problem — check `aws bedrock get-inference-profile
+--inference-profile-identifier us.anthropic.claude-haiku-4-5-20251001-v1:0
+--region us-west-2` for the model's real routing regions and cross-check
+`modules/service-worker/iam.tf`'s `task_bedrock` policy resources against
+them (see `docs/phase-5.md` bugs #1-2 for why this isn't a bare
+foundation-model ARN).

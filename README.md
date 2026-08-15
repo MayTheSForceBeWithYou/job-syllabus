@@ -9,20 +9,22 @@ is being built in phases per that document's §0 working agreement; each phase g
 `docs/phase-N.md` writeup — [Phase 0](docs/phase-0.md) (scaffold),
 [Phase 1](docs/phase-1.md) (local vertical slice),
 [Phase 2](docs/phase-2.md) (Terraform baseline + Jenkins),
-[Phase 3](docs/phase-3.md) (deploy the read API), and
-[Phase 4](docs/phase-4.md) (ingestion at scale) are all done.
+[Phase 3](docs/phase-3.md) (deploy the read API),
+[Phase 4](docs/phase-4.md) (ingestion at scale), and
+[Phase 5](docs/phase-5.md) (Bedrock + review queue) are all done.
 
-**Status: Phase 0-4 complete.** `make ingest && make report` fetches real postings from
+**Status: Phase 0-5 complete.** `make ingest && make report` fetches real postings from
 49 verified companies (Epic Games, Riot Games, Nintendo, Krafton, and 45 others across
 Greenhouse/Lever/Ashby/SmartRecruiters/Workable/Workday), runs them through the
-extraction pipeline (normalize → segment → dictionary match), and prints a ranked
-skill-frequency table. The §6 hand-labeled validation gate passes at precision 1.000 /
-recall 0.942. See [PROGRESS.md](PROGRESS.md) for what's built, [NEXT_STEPS.md](NEXT_STEPS.md)
-for what's next, and [HOW_TO_TEST.md](HOW_TO_TEST.md) to run it yourself.
+extraction pipeline (normalize → segment → dictionary match → Bedrock fallback), and
+prints a ranked skill-frequency table. The §6 hand-labeled validation gate passes at
+precision 1.000 / recall 0.942. See [PROGRESS.md](PROGRESS.md) for what's built,
+[NEXT_STEPS.md](NEXT_STEPS.md) for what's next, and [HOW_TO_TEST.md](HOW_TO_TEST.md)
+to run it yourself.
 
 Infrastructure runs for real on AWS (`us-west-1`): a Terraform-managed VPC, ECS cluster,
 SQS queues, and a Jenkins controller at `jenkins.job-syllabus.skopekreep.com`, entirely
-config-as-code (JCasC + Job DSL) with seven seeded pipelines. See
+config-as-code (JCasC + Job DSL) with eight seeded pipelines. See
 [docs/phase-2.md](docs/phase-2.md) and [docs/bootstrap.md](docs/bootstrap.md).
 
 The read-only `service-api` is deployed and live behind API Gateway, running on ECS
@@ -35,5 +37,15 @@ Ingestion runs at scale: `cmd/ingest` fetches from all six Tier-1 ATS platforms 
 extraction, with idempotent write-time skill counters and a nightly `cmd/rollup
 reconcile` pass that corrects drift. See [docs/phase-4.md](docs/phase-4.md).
 
-Not started: Stage 4 (Bedrock fallback), Stage 5 (review queue), auth (Phase 6's
-Cognito JWT authorizer), and the Expo/mobile client.
+Unmatched requirement bullets fall back to Claude Haiku (Amazon Bedrock, cross-region
+inference profile in `us-west-2`), cached by bullet-text hash; anything Bedrock finds
+that isn't already a known skill surfaces in a review queue (`GET /v1/reviews`) for
+triage (`POST /v1/reviews/{term}`: create/alias/reject). Approved skills write straight
+to DynamoDB — the live source of truth `cmd/api`/`cmd/worker` both merge in on a
+5-minute refresh — and `cmd/rollup reextract` re-runs the corpus after a dictionary
+version bump so approvals reach already-processed postings. See
+[docs/phase-5.md](docs/phase-5.md).
+
+Not started: Stage 4's escalation-to-Sonnet path (not needed yet — Haiku alone has kept
+precision on target), auth (Phase 6's Cognito JWT authorizer), and the Expo/mobile
+client.

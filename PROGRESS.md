@@ -10,18 +10,20 @@ untracked `job-syllabus-design.md` as a competing source of truth; that's
 resolved (see `docs/design-full-reference.md`'s header) and `docs/design.md`
 is the only source of truth.
 
-**Phase 0 through Phase 4 are all complete** — see
+**Phase 0 through Phase 5 are all complete** — see
 [docs/phase-0.md](docs/phase-0.md), [docs/phase-1.md](docs/phase-1.md),
 [docs/phase-2.md](docs/phase-2.md), [docs/phase-3.md](docs/phase-3.md),
-and [docs/phase-4.md](docs/phase-4.md) for the full writeups (§0.6
-requires these; they're the more detailed companion to this file). Phase
-2's application-level content (what's built/tested in Go) is unchanged
-from Phase 1 below; what's new is real AWS infrastructure — see "Phase 2:
-infrastructure" further down. Phase 3 adds the read-only `service-api` —
-see "Phase 3: the read API" further down still. Phase 4 adds the other
-five Tier-1 connectors, grows the company registry to 49, and replaces
-inline extraction with a real SQS-queued `cmd/worker` — see "Phase 4:
-ingestion at scale" at the very end.
+[docs/phase-4.md](docs/phase-4.md), and [docs/phase-5.md](docs/phase-5.md)
+for the full writeups (§0.6 requires these; they're the more detailed
+companion to this file). Phase 2's application-level content (what's
+built/tested in Go) is unchanged from Phase 1 below; what's new is real
+AWS infrastructure — see "Phase 2: infrastructure" further down. Phase 3
+adds the read-only `service-api` — see "Phase 3: the read API" further
+down still. Phase 4 adds the other five Tier-1 connectors, grows the
+company registry to 49, and replaces inline extraction with a real
+SQS-queued `cmd/worker` — see "Phase 4: ingestion at scale". Phase 5 adds
+the Bedrock fallback and review queue — see "Phase 5: Bedrock + review
+queue" at the very end.
 
 ## DoD: met
 
@@ -296,3 +298,50 @@ companies' data silently near-empty.
 role, you can expect to:") that match nothing, and some Kabam postings are
 in French. Documented in `classifyHeading`'s KNOWN GAP comment and reflected
 honestly in the validation set — see `NEXT_STEPS.md`.
+
+## Phase 5: Bedrock + review queue
+
+Stage 4 (Bedrock fallback) batches zero-dictionary-hit bullets to Claude
+Haiku (a cross-region inference profile in `us-west-2` — this account's
+Bedrock catalog doesn't offer the design doc's originally-named
+`claude-3-5-haiku` at all, see `docs/phase-5.md`), validates every response
+against a strict schema, and caches by bullet-text hash with a 90-day TTL.
+Stage 5 (review queue) routes anything Bedrock finds that isn't already a
+known skill to `GET /v1/reviews`; `POST /v1/reviews/{term}` triages
+create/alias/reject, writing approved skills straight to DynamoDB (the
+live dictionary source of truth — no GitHub write credential exists in
+this project for the git-commit path the design describes). `cmd/rollup
+reextract` re-enqueues postings behind the current `extract.Version`.
+
+**Phase 5 DoD: met, proven against real production traffic, not just
+locally.** A real Rockstar Games posting's "Experience with MotionBuilder
+and/or Maya" bullet had neither term in the dictionary; Bedrock correctly
+identified both, and since neither matched a known skill, both surfaced in
+`GET /v1/reviews`. Approving `maya` via the API, then triggering a
+`backfill` re-extraction of that company, showed the same posting now
+matching `maya` **via the dictionary** (`method:"dict"`, not `"llm"`) on
+the very next pass — proving the approval took effect immediately, no
+redeploy needed.
+
+```
+$ curl "$API_URL/v1/postings/34338f3fc0d602b6"
+{"skills":[{"skillId":"cpp","method":"dict"},{"skillId":"csharp","method":"dict"},
+  {"skillId":"maya","display":"Autodesk Maya","method":"dict",
+   "evidence":"- Experience with MotionBuilder and/or Maya."},
+  {"skillId":"motionbuilder","method":"dict"}]}
+```
+
+Getting there surfaced two more real production bugs on top of the two
+already found during initial build-out (wrong Bedrock model name; missing
+second IAM statement for the inference profile's underlying regional
+models) — the real Bedrock model this account's catalog offers only
+supports `INFERENCE_PROFILE` invocation, not the on-demand foundation-model
+ARN the design's model name implied; and `service-api`'s task role had no
+`dynamodb:PutItem`/`DeleteItem` at all, a gap Phase 3's own IAM comment had
+explicitly flagged ("widen this when a write endpoint lands") and still
+got missed until the first real `POST /v1/reviews/{term}` 500'd in
+production. Both fixed; both documented with root causes in
+`docs/phase-5.md`, along with a genuinely surprising finding: both IAM/
+Bedrock access changes took noticeably longer to propagate for real calls
+than either AWS's own documentation or `aws iam simulate-principal-policy`
+suggested — tens of minutes, not seconds.
