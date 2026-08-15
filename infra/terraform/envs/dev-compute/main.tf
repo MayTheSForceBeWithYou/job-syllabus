@@ -132,6 +132,11 @@ module "task_scheduled_rollup_reconcile" {
   command      = ["reconcile"]
   environment = [
     { name = "BACKUP_BUCKET", value = data.terraform_remote_state.data.outputs.data_bucket },
+    # Unused by `reconcile` itself — present so the `reextract` job (Phase 5,
+    # ci/Jenkinsfile.reextract) can run against this same task definition
+    # family via `ecs run-task --overrides` (command override only, not
+    # environment) without a second Terraform-managed task definition.
+    { name = "EXTRACT_QUEUE_URL", value = module.queues.queue_urls["extract"] },
   ]
   ecs_cluster_name        = module.ecs_cluster.cluster_name
   task_execution_role_arn = module.ecs_cluster.task_execution_role_arn

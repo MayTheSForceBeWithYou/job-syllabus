@@ -67,6 +67,43 @@ variable "extract_queue_arn" {
   type = string
 }
 
+# Must match internal/bedrock.Region/.ModelID/.FoundationModelID exactly —
+# the IAM grant is scoped to these specific ARNs, not a wildcard, so a drift
+# between the Go constants and these variables would show up as a real
+# AccessDeniedException at InvokeModel time, not a silent no-op.
+variable "bedrock_region" {
+  description = "Must match internal/bedrock.Region — Bedrock has no us-west-1 presence."
+  type        = string
+  default     = "us-west-2"
+}
+
+# This account's Bedrock catalog doesn't offer claude-3-5-haiku on-demand at
+# all, and the Haiku model it does offer (claude-haiku-4-5) only supports
+# INFERENCE_PROFILE invocation (confirmed via `aws bedrock
+# get-foundation-model`) — real account state, not a design change; see
+# internal/bedrock.ModelID's comment and docs/phase-5.md.
+variable "bedrock_inference_profile_id" {
+  description = "Must match internal/bedrock.ModelID — the cross-region inference profile InvokeModel is actually called with."
+  type        = string
+  default     = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+}
+
+variable "bedrock_foundation_model_id" {
+  description = "Must match internal/bedrock.FoundationModelID — the underlying model bedrock_inference_profile_id routes to."
+  type        = string
+  default     = "anthropic.claude-haiku-4-5-20251001-v1:0"
+}
+
+# The regions bedrock_inference_profile_id can route a request to (`aws
+# bedrock get-inference-profile`) — Bedrock IAM requires InvokeModel
+# permission on every underlying foundation-model ARN a profile might route
+# to, not just the profile ARN itself, so the grant needs one statement per
+# region here too.
+variable "bedrock_underlying_regions" {
+  type    = list(string)
+  default = ["us-east-1", "us-east-2", "us-west-2"]
+}
+
 variable "cpu" {
   description = "docs/design.md §9 sizing table: 0.5 vCPU."
   type        = number

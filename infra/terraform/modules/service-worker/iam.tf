@@ -25,15 +25,18 @@ resource "aws_iam_role" "task" {
   assume_role_policy = data.aws_iam_policy_document.task_assume.json
 }
 
-# GetItem (GetPosting) + PutItem (PutPosting, and the edge half of the
-# PutSkillEdge transaction) + UpdateItem (the STAT# counter's ADD, the
-# other half of that same transaction — IAM evaluates TransactWriteItems
-# per-item against the single-item action matching each TransactItem's
-# own operation, not just against TransactWriteItems itself; a real run
-# confirmed this the hard way with AccessDeniedException on UpdateItem
-# specifically, PutItem alone wasn't enough) + TransactWriteItems
-# (docs/design.md §4) — no Query/Scan, cmd/worker never lists anything, it
-# only ever looks up postings it was handed a specific ID for.
+# GetItem (GetPosting, Bedrock cache reads, rejected-term checks) + PutItem
+# (PutPosting, the edge half of the PutSkillEdge transaction, Bedrock cache
+# writes) + UpdateItem (the STAT# counter's ADD, the other half of that same
+# transaction — IAM evaluates TransactWriteItems per-item against the
+# single-item action matching each TransactItem's own operation, not just
+# against TransactWriteItems itself; a real run confirmed this the hard way
+# with AccessDeniedException on UpdateItem specifically, PutItem alone
+# wasn't enough — plus the review-queue occurrence counter's own ADD) +
+# TransactWriteItems (docs/design.md §4) + Scan (Phase 5:
+# ListDynamicSkills, reading DynamoDB-approved skills for the periodic
+# dictionary merge — same accepted Phase-1-scale tradeoff as every other
+# Scan in this codebase) — no Query, cmd/worker never queries a GSI.
 data "aws_iam_policy_document" "task_dynamodb" {
   statement {
     sid = "ReadWriteJobSyllabusTable"
@@ -42,6 +45,7 @@ data "aws_iam_policy_document" "task_dynamodb" {
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
       "dynamodb:TransactWriteItems",
+      "dynamodb:Scan",
     ]
     resources = [var.table_arn]
   }
@@ -85,4 +89,41 @@ resource "aws_iam_role_policy" "task_sqs" {
   name   = "${var.project}-service-worker-sqs"
   role   = aws_iam_role.task.id
   policy = data.aws_iam_policy_document.task_sqs.json
+}
+
+data "aws_caller_identity" "current" {}
+
+# Stage 4 (docs/design.md §6) — Bedrock has no us-west-1 presence, so this
+# grants InvokeModel in us-west-2 (internal/bedrock.Region), scoped to
+# specific model ARNs, not a wildcard resource. Two resource types, both
+# required: the inference-profile ARN itself (account-scoped — this is what
+# ModelID actually names in the InvokeModel call) AND every underlying
+# foundation-model ARN the profile can route a request to across its three
+# backing regions (`aws bedrock get-inference-profile` — Bedrock IAM checks
+# both the profile and whichever regional foundation model actually serves
+# the request). Scoped to on-demand invocation only; no batch/provisioned-
+# throughput actions, since cmd/worker only ever does synchronous
+# per-batch InvokeModel calls.
+data "aws_iam_policy_document" "task_bedrock" {
+  statement {
+    sid     = "InvokeHaikuInferenceProfile"
+    actions = ["bedrock:InvokeModel"]
+    resources = [
+      "arn:aws:bedrock:${var.bedrock_region}:${data.aws_caller_identity.current.account_id}:inference-profile/${var.bedrock_inference_profile_id}",
+    ]
+  }
+  statement {
+    sid     = "InvokeHaikuUnderlyingFoundationModel"
+    actions = ["bedrock:InvokeModel"]
+    resources = [
+      for region in var.bedrock_underlying_regions :
+      "arn:aws:bedrock:${region}::foundation-model/${var.bedrock_foundation_model_id}"
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "task_bedrock" {
+  name   = "${var.project}-service-worker-bedrock"
+  role   = aws_iam_role.task.id
+  policy = data.aws_iam_policy_document.task_bedrock.json
 }

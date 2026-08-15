@@ -59,9 +59,11 @@ resource "aws_iam_role_policy" "ingest_task" {
 
 # cmd/rollup (docs/design.md §4/§9): reconcile scans+corrects counters
 # (DynamoDB scan/read/write); export/import (manual, the dev-data teardown
-# safety net) read/write the whole table plus the backups/ S3 prefix. One
-# role covers the whole binary rather than juggling per-subcommand roles,
-# since the scheduled job and the manual invocations share the same image.
+# safety net) read/write the whole table plus the backups/ S3 prefix;
+# reextract (Phase 5) scans postings and enqueues the ones behind current
+# ExtractVer (SQS send). One role covers the whole binary rather than
+# juggling per-subcommand roles, since the scheduled job and the manual
+# invocations share the same image.
 resource "aws_iam_role" "rollup_task" {
   name               = "job-syllabus-rollup-task"
   assume_role_policy = data.aws_iam_policy_document.scheduled_task_assume.json
@@ -89,6 +91,11 @@ data "aws_iam_policy_document" "rollup_task" {
       "s3:PutObject",
     ]
     resources = ["${data.terraform_remote_state.data.outputs.data_bucket_arn}/backups/*"]
+  }
+  statement {
+    sid       = "EnqueueReextraction"
+    actions   = ["sqs:SendMessage"]
+    resources = [module.queues.queue_arns["extract"]]
   }
 }
 
