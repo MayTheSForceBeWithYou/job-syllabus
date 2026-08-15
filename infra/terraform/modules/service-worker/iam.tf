@@ -26,8 +26,13 @@ resource "aws_iam_role" "task" {
 }
 
 # GetItem (GetPosting) + PutItem (PutPosting, and the edge half of the
-# PutSkillEdge transaction) + TransactWriteItems (PutSkillEdge itself,
-# docs/design.md §4) — no Query/Scan, cmd/worker never lists anything, it
+# PutSkillEdge transaction) + UpdateItem (the STAT# counter's ADD, the
+# other half of that same transaction — IAM evaluates TransactWriteItems
+# per-item against the single-item action matching each TransactItem's
+# own operation, not just against TransactWriteItems itself; a real run
+# confirmed this the hard way with AccessDeniedException on UpdateItem
+# specifically, PutItem alone wasn't enough) + TransactWriteItems
+# (docs/design.md §4) — no Query/Scan, cmd/worker never lists anything, it
 # only ever looks up postings it was handed a specific ID for.
 data "aws_iam_policy_document" "task_dynamodb" {
   statement {
@@ -35,6 +40,7 @@ data "aws_iam_policy_document" "task_dynamodb" {
     actions = [
       "dynamodb:GetItem",
       "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
       "dynamodb:TransactWriteItems",
     ]
     resources = [var.table_arn]
