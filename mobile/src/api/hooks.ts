@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '../auth/AuthContext';
 import { apiFetch } from './client';
+import { encodeTermParam } from './termParam';
 import type {
   Company,
   ListCompaniesResponse,
@@ -91,7 +92,7 @@ export function useReviewAction() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ term, action }: { term: string; action: ReviewAction }) =>
-      apiFetch<ReviewActionResponse>(`/v1/reviews/${encodeURIComponent(term)}`, accessToken, {
+      apiFetch<ReviewActionResponse>(`/v1/reviews/${encodeTermParam(term)}`, accessToken, {
         method: 'POST',
         body: JSON.stringify(action),
       }),

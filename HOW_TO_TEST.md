@@ -361,21 +361,34 @@ Sorted by occurrence count, each with a category guess and up to 5
 example evidence spans. Empty is a legitimate result if nothing unmatched
 has been seen recently — not a bug, just a quiet corpus.
 
-**Triage a term** — three actions, `POST /v1/reviews/{term}` (URL-encode
-spaces in the term):
+**Triage a term** — three actions, `POST /v1/reviews/{term}`. The `{term}`
+path segment is **base64url-encoded (no padding)**, not plain
+URL-encoding — a term containing `/` (e.g. `CI/CD`) broke this route even
+with correct `encodeURIComponent`, since API Gateway HTTP APIs
+unconditionally decode `%2F` back into a literal `/` before forwarding the
+path, splitting it into extra segments chi's single-segment `{term}` route
+can't match (see `docs/phase-6.md`'s bug list). Encode with:
+
+```
+TERM=$(printf '%s' 'octane render' | base64 | tr '+/' '-_' | tr -d '=')
+```
 
 ```
 # Approve as a brand-new skill:
-curl -X POST "$API_URL/v1/reviews/octane%20render" -H 'Content-Type: application/json' \
-  -d '{"action":"create","category":"engines"}'
+curl -X POST "$API_URL/v1/reviews/$(printf '%s' 'octane render' | base64 | tr '+/' '-_' | tr -d '=')" \
+  -H 'Content-Type: application/json' -d '{"action":"create","category":"engines"}'
 
 # Merge into an existing skill instead (e.g. a paraphrase of something already tracked):
-curl -X POST "$API_URL/v1/reviews/helix%20core%20p4v%20plugin" -H 'Content-Type: application/json' \
-  -d '{"action":"alias","mergeIntoSkillId":"perforce"}'
+curl -X POST "$API_URL/v1/reviews/$(printf '%s' 'helix core p4v plugin' | base64 | tr '+/' '-_' | tr -d '=')" \
+  -H 'Content-Type: application/json' -d '{"action":"alias","mergeIntoSkillId":"perforce"}'
 
 # Dismiss as noise — permanent, won't resurface even if the same phrase reappears:
-curl -X POST "$API_URL/v1/reviews/team%20player" -H 'Content-Type: application/json' \
-  -d '{"action":"reject"}'
+curl -X POST "$API_URL/v1/reviews/$(printf '%s' 'team player' | base64 | tr '+/' '-_' | tr -d '=')" \
+  -H 'Content-Type: application/json' -d '{"action":"reject"}'
+
+# A term containing a slash — exactly the case that broke before this fix:
+curl -X POST "$API_URL/v1/reviews/$(printf '%s' 'CI/CD' | base64 | tr '+/' '-_' | tr -d '=')" \
+  -H 'Content-Type: application/json' -d '{"action":"reject"}'
 ```
 
 Each of these was exercised locally against DynamoDB Local before ever

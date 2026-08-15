@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 
@@ -45,8 +46,20 @@ func (s *Server) handleListReviews(w http.ResponseWriter, r *http.Request) {
 // the seed, synced by hand from DynamoDB periodically, not on every
 // approval.
 func (s *Server) handleReviewAction(w http.ResponseWriter, r *http.Request) {
+	// The {term} path segment is base64url (no padding), not a plain
+	// URL-encoded string — a term containing "/" (e.g. "CI/CD") broke this
+	// route even with the client correctly calling encodeURIComponent:
+	// API Gateway HTTP APIs unconditionally decode %2F back into a literal
+	// "/" before forwarding the path, which chi's single-segment {term}
+	// route can't match. Base64url's alphabet has no "/" or "+", so it
+	// survives the trip regardless of what the term contains.
 	rawTerm := chi.URLParam(r, "term")
-	term := store.NormalizeTerm(rawTerm)
+	decoded, err := base64.RawURLEncoding.DecodeString(rawTerm)
+	if err != nil {
+		writeProblem(w, r, http.StatusBadRequest, "invalid term", "term path segment must be base64url-encoded (no padding): "+err.Error())
+		return
+	}
+	term := store.NormalizeTerm(string(decoded))
 	if term == "" {
 		writeProblem(w, r, http.StatusBadRequest, "invalid term", "term must not be empty")
 		return
