@@ -104,6 +104,8 @@ module "api_gateway" {
   cognito_app_client_id = module.auth.user_pool_client_id
   cognito_read_scope    = module.auth.read_scope
   cognito_admin_scope   = module.auth.admin_scope
+
+  web_origin = module.web.url
 }
 
 module "service_worker" {

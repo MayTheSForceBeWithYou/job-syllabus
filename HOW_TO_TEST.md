@@ -4,16 +4,17 @@ This covers what actually works today. It'll grow as more of
 `docs/design.md` gets implemented — check the date below against
 `git log` if it's been a while.
 
-**Last updated:** 2026-08-15 — Phase 0-5 complete, DoD and §6 validation
+**Last updated:** 2026-08-15 — Phase 0-6 complete, DoD and §6 validation
 gate both passing, real AWS infrastructure + Jenkins + `service-api` +
-queue-based ingestion + Bedrock fallback/review queue all live. Sections
-1-5 below (local pipeline) are mostly unchanged from Phase 1, but note
-section 3's update — `cmd/ingest` no longer extracts inline (Phase 4), so
-seeing real skill data locally now needs `make worker` running too, and
-`make worker` locally runs with `BEDROCK_ENABLED=false` (Phase 5) since
-LocalStack can't emulate Bedrock. Section 6 covers Phase 2's
-infrastructure, section 7 Phase 3's deployed API, section 8 Phase 4's real
-ingestion pipeline, section 9 (new) Phase 5's review queue.
+queue-based ingestion + Bedrock fallback/review queue + Cognito auth +
+Expo web client all live. Sections 1-5 below (local pipeline) are mostly
+unchanged from Phase 1, but note section 3's update — `cmd/ingest` no
+longer extracts inline (Phase 4), so seeing real skill data locally now
+needs `make worker` running too, and `make worker` locally runs with
+`BEDROCK_ENABLED=false` (Phase 5) since LocalStack can't emulate Bedrock.
+Section 6 covers Phase 2's infrastructure, section 7 Phase 3's deployed
+API, section 8 Phase 4's real ingestion pipeline, section 9 Phase 5's
+review queue, section 10 (new) Phase 6's Cognito auth + Expo client.
 
 ## Prerequisites
 
@@ -433,3 +434,86 @@ your problem — check `aws bedrock get-inference-profile
 `modules/service-worker/iam.tf`'s `task_bedrock` policy resources against
 them (see `docs/phase-5.md` bugs #1-2 for why this isn't a bare
 foundation-model ARN).
+
+## 10. Testing Cognito auth + the Expo client (Phase 6)
+
+**The deployed web client** is the real DoD target — open it in a browser:
+
+```
+WEB_URL=$(aws ssm get-parameter --name /job-syllabus/web/url --region us-west-1 --query Parameter.Value --output text)
+echo "$WEB_URL"   # https://<distribution>.cloudfront.net
+```
+
+Sign in with an admin-created user (see below to create one). A working
+sign-in redirects to Cognito's Hosted UI, back to the app with real tokens,
+and all four tabs (Syllabus/Postings/Companies/Review) should show live
+production data — the same numbers `curl`ing `$API_URL` directly returns.
+
+**Create a Cognito user** — there's no public self-signup
+(`allow_admin_create_user_only = true`), so users only exist via the AWS
+CLI:
+
+```
+POOL_ID=$(aws ssm get-parameter --name /job-syllabus/auth/user_pool_id --region us-west-1 --query Parameter.Value --output text)
+aws cognito-idp admin-create-user --user-pool-id "$POOL_ID" --username <email> --user-attributes Name=email,Value=<email> Name=email_verified,Value=true --region us-west-1
+aws cognito-idp admin-set-user-password --user-pool-id "$POOL_ID" --username <email> --password '<a 12+ char password>' --permanent --region us-west-1
+```
+
+**Confirm the JWT authorizer itself, independent of the client** — a
+request with no token should 401, a request with a garbage token should
+also 401 (proving the authorizer actually validates the JWT, not just
+checks presence):
+
+```
+curl -i "$API_URL/v1/skills"                              # {"message":"Unauthorized"}
+curl -i "$API_URL/v1/skills" -H "Authorization: Bearer garbage"   # same
+curl -i "$API_URL/healthz"                                 # 200, unauthenticated — unchanged from Phase 3
+```
+
+**Confirm CORS is actually configured** (bug #9 in `docs/phase-6.md` — this
+silently breaks the web client even when the API itself is healthy):
+
+```
+curl -i -X OPTIONS "$API_URL/v1/skills" \
+  -H "Origin: $WEB_URL" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: authorization"
+# expect: HTTP/1.1 204, with access-control-allow-origin: $WEB_URL
+```
+
+**Run the mobile app locally** (Expo dev server, for iOS/Android code-path
+review — this project does not claim device/simulator verification, see
+`docs/phase-6.md`):
+
+```
+cd mobile
+cp .env.example .env   # fill in the SSM-sourced values .env.example documents
+npm install
+npx expo start --web   # or --ios / --android if you have Xcode/Android Studio
+```
+
+**Rebuilding and redeploying the web client manually** (what
+`client-build`'s "Export web build" → "Deploy to S3" → "Invalidate
+CloudFront" stages do, useful for validating a change before waiting on
+Jenkins):
+
+```
+cd mobile
+cat > .env.production.local <<EOF
+EXPO_PUBLIC_API_URL=$API_URL
+EXPO_PUBLIC_COGNITO_DOMAIN=$(aws ssm get-parameter --name /job-syllabus/auth/hosted_ui_domain --region us-west-1 --query Parameter.Value --output text)
+EXPO_PUBLIC_COGNITO_CLIENT_ID=$(aws ssm get-parameter --name /job-syllabus/auth/user_pool_client_id --region us-west-1 --query Parameter.Value --output text)
+EXPO_PUBLIC_WEB_REDIRECT_URI=$WEB_URL
+EOF
+npx expo export -p web
+BUCKET=$(aws ssm get-parameter --name /job-syllabus/web/bucket_name --region us-west-1 --query Parameter.Value --output text)
+DIST_ID=$(aws ssm get-parameter --name /job-syllabus/web/distribution_id --region us-west-1 --query Parameter.Value --output text)
+aws s3 sync dist/ "s3://$BUCKET/" --delete --region us-west-1
+aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*" --region us-west-1
+```
+
+**If the bundle throws `EXPO_PUBLIC_X is not set` in the browser console
+despite the env file loading correctly** (bug #8 in `docs/phase-6.md`):
+that's not an env-loading problem — grep the exported JS for the literal
+expected value (e.g. the Cognito domain string). If it's absent, something
+in `src/` is reading `process.env[someVariable]` (dynamic) instead of
+`process.env.EXPO_PUBLIC_X` (static) — Expo's build-time inliner only
+rewrites the static form.

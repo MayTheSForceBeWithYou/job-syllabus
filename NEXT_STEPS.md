@@ -1,6 +1,6 @@
 # Next steps
 
-**Phase 0 through Phase 5 are all complete.** Phase 0/1 DoD met
+**Phase 0 through Phase 6 are all complete.** Phase 0/1 DoD met
 (`docs/design.md` §17): `make ingest && make report` prints a ranked
 skill-frequency table from real postings — see PROGRESS.md for the actual
 output. The §6 validation gate also passes (precision 1.000, recall
@@ -19,23 +19,31 @@ finding, not a bug — see [docs/phase-4.md](docs/phase-4.md). Phase 5 DoD
 met: unknown terms surface in `GET /v1/reviews`, and approving one via the
 API updates the live (DynamoDB-backed) dictionary immediately, with
 `cmd/rollup reextract` picking it up across the existing corpus — see
-[docs/phase-5.md](docs/phase-5.md).
-`docs/phase-0.md` through `docs/phase-5.md` writeups are all done (§0.6).
+[docs/phase-5.md](docs/phase-5.md). Phase 6 DoD met for web (verified live
+against the real deployed CloudFront URL — sign-in, all four screens
+rendering real production data) and met for iOS/Android by code review
+only, not device/simulator execution (no Xcode/Android Studio available in
+this environment; an explicit operator decision made before any code was
+written) — see [docs/phase-6.md](docs/phase-6.md).
+`docs/phase-0.md` through `docs/phase-6.md` writeups are all done (§0.6).
 
-## Phase 6 and beyond (not started)
+## Phase 7 and beyond (not started)
 
-Per `docs/design.md`'s phase list: auth (Cognito JWT authorizer —
-`service-api` is locked to the operator's IP by an application-layer
-allowlist in the meantime, see `internal/api/ipallow.go`), role-family
-classification (every posting is still `RoleFamily: unclassified`, so
-`STAT#` counters currently only ever have one bucket), and the Expo/mobile
-client. `infra-plan`'s trigger is push-based rather than true PR-discovery
-pending GitHub credentials in Jenkins — the same missing-credential gap
-Phase 5 hit for `data/skills.yaml` writeback (see docs/phase-5.md); worth
-solving once, for both, if this project ever needs a GitHub App/PAT.
-Stage 4's escalation-to-Sonnet path (docs/design.md §6: "escalate to
-Sonnet if precision on the validation set is short of target") hasn't
-been needed — Haiku alone has kept the §6 gate passing.
+Per `docs/design.md`'s phase list: role-family classification (every
+posting is still `RoleFamily: unclassified`, so `STAT#` counters currently
+only ever have one bucket). `infra-plan`'s trigger is push-based rather
+than true PR-discovery pending GitHub credentials in Jenkins — the same
+missing-credential gap Phase 5 hit for `data/skills.yaml` writeback (see
+docs/phase-5.md); worth solving once, for both, if this project ever needs
+a GitHub App/PAT. Stage 4's escalation-to-Sonnet path (docs/design.md §6:
+"escalate to Sonnet if precision on the validation set is short of
+target") hasn't been needed — Haiku alone has kept the §6 gate passing.
+**Actual iOS/Android device or simulator verification** is still
+outstanding — Phase 6's mobile screens were verified by code review
+against current Expo SDK docs only, per an explicit operator decision (no
+Xcode/Android Studio available in this environment); running the real app
+on a simulator or device is the next real step to close that gap, see
+[docs/phase-6.md](docs/phase-6.md).
 
 ## Keeping `data/skills.yaml` in sync with DynamoDB's live dictionary
 

@@ -10,10 +10,11 @@ is being built in phases per that document's §0 working agreement; each phase g
 [Phase 1](docs/phase-1.md) (local vertical slice),
 [Phase 2](docs/phase-2.md) (Terraform baseline + Jenkins),
 [Phase 3](docs/phase-3.md) (deploy the read API),
-[Phase 4](docs/phase-4.md) (ingestion at scale), and
-[Phase 5](docs/phase-5.md) (Bedrock + review queue) are all done.
+[Phase 4](docs/phase-4.md) (ingestion at scale),
+[Phase 5](docs/phase-5.md) (Bedrock + review queue), and
+[Phase 6](docs/phase-6.md) (Cognito auth + Expo client) are all done.
 
-**Status: Phase 0-5 complete.** `make ingest && make report` fetches real postings from
+**Status: Phase 0-6 complete.** `make ingest && make report` fetches real postings from
 49 verified companies (Epic Games, Riot Games, Nintendo, Krafton, and 45 others across
 Greenhouse/Lever/Ashby/SmartRecruiters/Workable/Workday), runs them through the
 extraction pipeline (normalize → segment → dictionary match → Bedrock fallback), and
@@ -46,6 +47,14 @@ to DynamoDB — the live source of truth `cmd/api`/`cmd/worker` both merge in on
 version bump so approvals reach already-processed postings. See
 [docs/phase-5.md](docs/phase-5.md).
 
+A real Cognito User Pool (admin-created users only) now fronts `service-api` via an API
+Gateway JWT authorizer, replacing Phase 3's IP allowlist — the read/admin OAuth scopes
+map directly onto GET/POST. An Expo Router client (sign-in, ranked syllabus, postings,
+companies, review-queue triage) is deployed as a static web build behind S3 +
+CloudFront, verified live end-to-end against real production data; iOS/Android are
+verified by code review against current SDK docs, not by running on a device or
+simulator (no Xcode/Android Studio available in this environment). See
+[docs/phase-6.md](docs/phase-6.md).
+
 Not started: Stage 4's escalation-to-Sonnet path (not needed yet — Haiku alone has kept
-precision on target), auth (Phase 6's Cognito JWT authorizer), and the Expo/mobile
-client.
+precision on target), and actual iOS/Android device or simulator verification.

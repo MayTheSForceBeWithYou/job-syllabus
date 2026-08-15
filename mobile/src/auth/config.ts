@@ -3,8 +3,18 @@
 // the bundle at build time; see .env.example for the full set and
 // ci/Jenkinsfile.client-build for how the real values get there in CI
 // (read from SSM, same pattern the Go side uses throughout this project).
-function requireEnv(name: string): string {
-  const value = process.env[name];
+//
+// IMPORTANT: the inliner (babel-plugin-transform-inline-environment-variables,
+// via babel-preset-expo) only rewrites *static* `process.env.EXPO_PUBLIC_X`
+// member expressions it can pattern-match at build time. A dynamic
+// `process.env[name]` lookup is invisible to it and survives into the
+// bundle as a real runtime property access against `process.env`, which is
+// empty in a browser bundle — every value silently comes back undefined.
+// Confirmed by grepping a real export for the literal Cognito domain string
+// and finding it absent even though the export log showed the env file
+// loading correctly. So each var below must be a literal static access;
+// requireEnv only handles the "throw if missing" part.
+function requireEnv(name: string, value: string | undefined): string {
   if (!value) {
     throw new Error(
       `${name} is not set — copy .env.example to .env and fill in real values (see docs/phase-6.md), or check ci/Jenkinsfile.client-build's SSM injection if this is a CI build.`,
@@ -17,8 +27,8 @@ export const authConfig = {
   // e.g. "job-syllabus-881811711506.auth.us-west-1.amazoncognito.com" —
   // no https:// prefix, matching Terraform's own auth_hosted_ui_domain
   // output.
-  hostedUiDomain: requireEnv('EXPO_PUBLIC_COGNITO_DOMAIN'),
-  clientId: requireEnv('EXPO_PUBLIC_COGNITO_CLIENT_ID'),
+  hostedUiDomain: requireEnv('EXPO_PUBLIC_COGNITO_DOMAIN', process.env.EXPO_PUBLIC_COGNITO_DOMAIN),
+  clientId: requireEnv('EXPO_PUBLIC_COGNITO_CLIENT_ID', process.env.EXPO_PUBLIC_COGNITO_CLIENT_ID),
   // docs/design.md §7: read scope for queries, admin scope for writes —
   // both requested for every sign-in since this is a single-operator tool
   // (docs/phase-5.md's Bedrock use-case form answer: "internal users
@@ -32,7 +42,7 @@ export const authConfig = {
   // hard-coding the production web URL rather than relying on
   // auto-detection. Native (iOS/Android) doesn't use this at all — see
   // AuthContext.tsx.
-  webRedirectUri: requireEnv('EXPO_PUBLIC_WEB_REDIRECT_URI'),
+  webRedirectUri: requireEnv('EXPO_PUBLIC_WEB_REDIRECT_URI', process.env.EXPO_PUBLIC_WEB_REDIRECT_URI),
 };
 
-export const apiBaseUrl = requireEnv('EXPO_PUBLIC_API_URL');
+export const apiBaseUrl = requireEnv('EXPO_PUBLIC_API_URL', process.env.EXPO_PUBLIC_API_URL);

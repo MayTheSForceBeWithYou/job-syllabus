@@ -10,20 +10,21 @@ untracked `job-syllabus-design.md` as a competing source of truth; that's
 resolved (see `docs/design-full-reference.md`'s header) and `docs/design.md`
 is the only source of truth.
 
-**Phase 0 through Phase 5 are all complete** — see
+**Phase 0 through Phase 6 are all complete** — see
 [docs/phase-0.md](docs/phase-0.md), [docs/phase-1.md](docs/phase-1.md),
 [docs/phase-2.md](docs/phase-2.md), [docs/phase-3.md](docs/phase-3.md),
-[docs/phase-4.md](docs/phase-4.md), and [docs/phase-5.md](docs/phase-5.md)
-for the full writeups (§0.6 requires these; they're the more detailed
-companion to this file). Phase 2's application-level content (what's
-built/tested in Go) is unchanged from Phase 1 below; what's new is real
-AWS infrastructure — see "Phase 2: infrastructure" further down. Phase 3
-adds the read-only `service-api` — see "Phase 3: the read API" further
-down still. Phase 4 adds the other five Tier-1 connectors, grows the
-company registry to 49, and replaces inline extraction with a real
-SQS-queued `cmd/worker` — see "Phase 4: ingestion at scale". Phase 5 adds
-the Bedrock fallback and review queue — see "Phase 5: Bedrock + review
-queue" at the very end.
+[docs/phase-4.md](docs/phase-4.md), [docs/phase-5.md](docs/phase-5.md), and
+[docs/phase-6.md](docs/phase-6.md) for the full writeups (§0.6 requires
+these; they're the more detailed companion to this file). Phase 2's
+application-level content (what's built/tested in Go) is unchanged from
+Phase 1 below; what's new is real AWS infrastructure — see "Phase 2:
+infrastructure" further down. Phase 3 adds the read-only `service-api` —
+see "Phase 3: the read API" further down still. Phase 4 adds the other
+five Tier-1 connectors, grows the company registry to 49, and replaces
+inline extraction with a real SQS-queued `cmd/worker` — see "Phase 4:
+ingestion at scale". Phase 5 adds the Bedrock fallback and review queue —
+see "Phase 5: Bedrock + review queue". Phase 6 adds Cognito auth and the
+Expo client — see "Phase 6: Cognito auth + Expo client" at the very end.
 
 ## DoD: met
 
@@ -345,3 +346,47 @@ production. Both fixed; both documented with root causes in
 Bedrock access changes took noticeably longer to propagate for real calls
 than either AWS's own documentation or `aws iam simulate-principal-policy`
 suggested — tens of minutes, not seconds.
+
+## Phase 6: Cognito auth + Expo client
+
+A real Cognito User Pool (admin-created users only, no public self-signup)
+now fronts `service-api` via an API Gateway JWT authorizer, replacing
+Phase 3's IP allowlist outright (`internal/api/ipallow.go` deleted, not
+left as dead code — an allowlist would actively break the point of a
+mobile client signing in from arbitrary networks). `GET /v1/{proxy+}`
+requires a `read` scope, `POST /v1/{proxy+}` requires `admin`, both granted
+at sign-in. A new Expo Router app (`mobile/`, TypeScript, nativewind)
+implements sign-in (PKCE against Cognito Hosted UI — full-page redirect on
+web, native's own popup/in-app-browser flow on iOS/Android), the ranked
+syllabus, postings, companies, and review-queue triage screens, all
+against the real deployed API via `@tanstack/react-query`. The web build is
+static-exported and served from S3 + CloudFront (Origin Access Control),
+deployed by a new `client-build` Jenkins pipeline.
+
+**Phase 6 DoD: met for web, verified live end-to-end against the real
+deployed CloudFront URL** — cold load with no console errors, sign-in
+redirecting to Cognito's real Hosted UI with correct PKCE params, a real
+admin-created user signing in successfully, and all four tabs
+(Syllabus/Postings/Companies/Review) rendering real production data,
+including the review queue's Create/Alias/Reject actions (proving both the
+`read` and `admin` scopes work end to end). **iOS/Android are verified by
+code review against current Expo SDK 57 docs only** — no Xcode/Android
+Studio/simulator is available in this environment, and per an explicit
+operator decision made before writing any code, this project does not
+claim device-level verification it didn't perform. See
+[docs/phase-6.md](docs/phase-6.md) for the full DoD proof.
+
+Getting there surfaced nine real bugs — a Tailwind v4/nativewind v4
+version mismatch, two rounds of dependency-hoisting fallout from
+`--legacy-peer-deps`, a missing index route breaking `Stack.Protected`'s
+redirect mechanism, a nativewind/react-native-web dark-mode crash (and a
+first fix attempt that made it worse before the real fix), a native
+redirect-URI mismatch against Cognito's registered callback, a web
+popup-blocking bug fixed with a proper redirect-based architecture (not a
+workaround), a dynamic-`process.env` lookup silently defeating Expo's
+build-time env-var inliner, and — found only by testing the real deployed
+URL, not local dev or `tsc --noEmit` — a missing CORS configuration on API
+Gateway plus two follow-on routing bugs it exposed (the catch-all route
+swallowing the CORS preflight, then a per-route path-rewrite template
+stripping the `/v1` prefix chi's backend needs). All nine documented with
+root causes in `docs/phase-6.md`.

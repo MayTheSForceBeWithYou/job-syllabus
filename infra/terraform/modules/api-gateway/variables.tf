@@ -30,3 +30,7 @@ variable "cognito_read_scope" {
 variable "cognito_admin_scope" {
   type = string
 }
+
+variable "web_origin" {
+  type = string
+}
