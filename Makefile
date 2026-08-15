@@ -10,11 +10,16 @@ endif
 # Phase 4's real-AWS-by-default cmd/ingest/cmd/worker need these overrides
 # to run locally at all (DYNAMODB_ENDPOINT alone isn't enough anymore) —
 # LocalStack (docker-compose.yml) stands in for SQS + S3. Any credentials
-# work; LocalStack's community edition doesn't check them.
+# work; LocalStack's community edition doesn't check them. BEDROCK_ENABLED=
+# false (Phase 5) skips Stage 4 entirely — these fake credentials can't
+# authenticate against real Bedrock (LocalStack doesn't emulate it either),
+# so `make worker` would otherwise just log a Bedrock auth error on every
+# batch with unmatched bullets.
 LOCAL_AWS_ENV = AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local AWS_REGION=us-west-1 \
 	DYNAMODB_ENDPOINT=http://localhost:8000 S3_ENDPOINT=http://localhost:4566 SQS_ENDPOINT=http://localhost:4566 \
 	RAW_BUCKET=job-syllabus-raw-local \
-	EXTRACT_QUEUE_URL=http://sqs.us-west-1.localhost.localstack.cloud:4566/000000000000/extract-queue
+	EXTRACT_QUEUE_URL=http://sqs.us-west-1.localhost.localstack.cloud:4566/000000000000/extract-queue \
+	BEDROCK_ENABLED=false
 
 build:
 	go build ./...
