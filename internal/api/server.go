@@ -1,11 +1,11 @@
-// Package api implements the read-only REST surface from docs/design.md
-// §7 for Phase 3 ("Deploy API"): GET /v1/skills, /v1/skills/{id},
-// /v1/skills/{id}/postings, /v1/postings, /v1/postings/{id},
-// /v1/companies, /v1/stats/overview, /healthz, /readyz. Write endpoints
-// (submit/reviews/exports) and the Cognito JWT authorizer are later
-// phases — Phase 3's own DoD is explicit that this is read-only, "no auth
-// yet (locked to your IP)" — enforced here via ipAllowlist, not a WAF, see
-// ipallow.go for why.
+// Package api implements the REST surface from docs/design.md §7:
+// GET /v1/skills, /v1/skills/{id}, /v1/skills/{id}/postings, /v1/postings,
+// /v1/postings/{id}, /v1/companies, /v1/stats/overview, /v1/reviews,
+// POST /v1/reviews/{term}, /healthz, /readyz. Phase 3 shipped read-only,
+// gated by an application-layer IP allowlist (AWS WAFv2 doesn't support
+// HTTP APIs); Phase 6 replaces that with a real Cognito JWT authorizer at
+// API Gateway (infra/terraform/modules/api-gateway) — this package no
+// longer enforces access control itself.
 package api
 
 import (
@@ -28,10 +28,9 @@ import (
 // review-queue writeback (docs/design.md §6 Stage 5) means an approved
 // skill needs to become visible without a redeploy; see RefreshSkills.
 type Server struct {
-	Store       *store.Store
-	Skills      []model.Skill
-	Companies   []connectors.CompanyConfig
-	AllowedCIDR string // empty disables IP-restriction (local testing) — see ipallow.go
+	Store     *store.Store
+	Skills    []model.Skill
+	Companies []connectors.CompanyConfig
 
 	yamlSkills []model.Skill // the git-tracked seed RefreshSkills re-merges against each call
 
@@ -43,7 +42,7 @@ type Server struct {
 // New builds a Server, precomputing its lookup maps. skills is the
 // yaml-loaded seed; call RefreshSkills afterward (cmd/api does this once at
 // startup, then periodically) to merge in any DynamoDB-approved skills.
-func New(s *store.Store, skills []model.Skill, companies []connectors.CompanyConfig, allowedCIDR string) *Server {
+func New(s *store.Store, skills []model.Skill, companies []connectors.CompanyConfig) *Server {
 	skillsByID := make(map[string]model.Skill, len(skills))
 	for _, sk := range skills {
 		skillsByID[sk.ID] = sk
@@ -53,13 +52,12 @@ func New(s *store.Store, skills []model.Skill, companies []connectors.CompanyCon
 		tierBySlug[c.Slug] = c.Tier
 	}
 	return &Server{
-		Store:       s,
-		Skills:      skills,
-		Companies:   companies,
-		AllowedCIDR: allowedCIDR,
-		yamlSkills:  skills,
-		skillsByID:  skillsByID,
-		tierBySlug:  tierBySlug,
+		Store:      s,
+		Skills:     skills,
+		Companies:  companies,
+		yamlSkills: skills,
+		skillsByID: skillsByID,
+		tierBySlug: tierBySlug,
 	}
 }
 
@@ -118,7 +116,13 @@ func (s *Server) Router() http.Handler {
 	r.Get("/readyz", s.handleReadyz)
 
 	r.Route("/v1", func(r chi.Router) {
-		r.Use(ipAllowlist(s.AllowedCIDR))
+		// Phase 3's IP-allowlist middleware is retired as of Phase 6 — the
+		// real access control is now API Gateway's Cognito JWT authorizer
+		// (infra/terraform/modules/api-gateway), which rejects an
+		// unauthenticated or wrong-scope request before it ever reaches
+		// this service. That's also why the interim measure was
+		// application-layer at all: AWS WAFv2 doesn't support HTTP APIs, so
+		// there was no edge-level option available at the time.
 		r.Get("/skills", s.handleListSkills)
 		r.Get("/skills/{id}", s.handleGetSkill)
 		r.Get("/skills/{id}/postings", s.handleGetSkillPostings)

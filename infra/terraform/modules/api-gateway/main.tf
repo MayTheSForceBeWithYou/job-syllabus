@@ -1,11 +1,29 @@
 # HTTP API -> VPC Link -> internal ALB -> service-api (docs/design.md §3
-# architecture diagram). No JWT authorizer yet (Phase 6) - IP-restriction
-# for Phase 3 is application-layer middleware in cmd/api instead of a WAF
-# here, since AWS WAFv2 doesn't support associating with HTTP APIs at all
-# (only REST APIs) — see internal/api/ipallow.go for the full rationale.
+# architecture diagram). Phase 3's IP-restriction (application-layer
+# middleware in cmd/api, since AWS WAFv2 doesn't support associating with
+# HTTP APIs at all — see internal/api/ipallow.go) is retired for /v1/* as
+# of Phase 6 in favor of the real thing: a Cognito JWT authorizer below.
 resource "aws_apigatewayv2_api" "main" {
   name          = "${var.project}-api"
   protocol_type = "HTTP"
+}
+
+# docs/design.md §7: "admin scope for writes, read scope for queries."
+# HTTP API JWT authorizers and authorization_scopes attach per route, not
+# per path prefix within a catch-all — but every write in this API is a
+# POST and every read is a GET (true throughout internal/api, still true
+# after Phase 5's POST /v1/reviews/{term}), so splitting the catch-all by
+# method below is sufficient without any path-specific logic.
+resource "aws_apigatewayv2_authorizer" "cognito" {
+  api_id           = aws_apigatewayv2_api.main.id
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+  name             = "${var.project}-cognito"
+
+  jwt_configuration {
+    audience = [var.cognito_app_client_id]
+    issuer   = var.cognito_issuer_url
+  }
 }
 
 resource "aws_apigatewayv2_vpc_link" "main" {
@@ -60,6 +78,31 @@ resource "aws_apigatewayv2_route" "proxy" {
   api_id    = aws_apigatewayv2_api.main.id
   route_key = "ANY /{proxy+}"
   target    = "integrations/${aws_apigatewayv2_integration.alb.id}"
+}
+
+# More specific than the ANY catch-all above, so these win route
+# resolution for anything under /v1 — HTTP APIs pick the most specific
+# matching route. /healthz and /readyz (no {proxy+} match here) keep
+# falling through to the unauthenticated catch-all above, unchanged from
+# Phase 3.
+resource "aws_apigatewayv2_route" "v1_read" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "GET /v1/{proxy+}"
+  target    = "integrations/${aws_apigatewayv2_integration.alb.id}"
+
+  authorization_type   = "JWT"
+  authorizer_id        = aws_apigatewayv2_authorizer.cognito.id
+  authorization_scopes = [var.cognito_read_scope]
+}
+
+resource "aws_apigatewayv2_route" "v1_write" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "POST /v1/{proxy+}"
+  target    = "integrations/${aws_apigatewayv2_integration.alb.id}"
+
+  authorization_type   = "JWT"
+  authorizer_id        = aws_apigatewayv2_authorizer.cognito.id
+  authorization_scopes = [var.cognito_admin_scope]
 }
 
 resource "aws_cloudwatch_log_group" "access" {

@@ -26,3 +26,19 @@ output "alerts_topic_arn" {
 output "api_url" {
   value = module.api_gateway.api_url
 }
+
+output "web_url" {
+  value = module.web.url
+}
+
+output "auth_hosted_ui_domain" {
+  value = module.auth.hosted_ui_domain
+}
+
+output "auth_user_pool_id" {
+  value = module.auth.user_pool_id
+}
+
+output "auth_user_pool_client_id" {
+  value = module.auth.user_pool_client_id
+}

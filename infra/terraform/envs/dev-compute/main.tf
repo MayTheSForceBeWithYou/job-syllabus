@@ -62,7 +62,30 @@ module "service_api" {
   log_group_name          = module.ecs_cluster.log_group_name
   ecr_repo_url            = data.terraform_remote_state.data.outputs.ecr_repository_urls["api"]
   table_arn               = data.terraform_remote_state.data.outputs.table_arn
-  allowed_cidr            = var.api_allowed_cidr
+}
+
+# docs/design.md §8: Expo native scheme + the web deploy's real CloudFront
+# domain (module.web, below) + localhost for `expo start --web` dev — all
+# three need to be Hosted-UI-registered callback targets since a single
+# Cognito app client is shared across every target this one Expo codebase
+# builds for (docs/design.md §8: "one Expo codebase").
+module "auth" {
+  source = "../../modules/auth"
+
+  callback_urls = [
+    "jobsyllabus://redirect",
+    "https://${module.web.domain_name}",
+    "http://localhost:8081",
+  ]
+  logout_urls = [
+    "jobsyllabus://redirect",
+    "https://${module.web.domain_name}",
+    "http://localhost:8081",
+  ]
+}
+
+module "web" {
+  source = "../../modules/web"
 }
 
 module "api_gateway" {
@@ -71,6 +94,11 @@ module "api_gateway" {
   vpc_link_sg_id     = module.network.vpc_link_sg_id
   private_subnet_ids = module.network.private_subnet_ids
   alb_listener_arn   = module.service_api.alb_listener_arn
+
+  cognito_issuer_url    = module.auth.issuer_url
+  cognito_app_client_id = module.auth.user_pool_client_id
+  cognito_read_scope    = module.auth.read_scope
+  cognito_admin_scope   = module.auth.admin_scope
 }
 
 module "service_worker" {

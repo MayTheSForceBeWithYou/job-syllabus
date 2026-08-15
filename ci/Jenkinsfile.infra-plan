@@ -57,10 +57,9 @@ pipeline {
                     sh '''
                       jq -n \
                         --arg jenkins_allowed_cidr "$(aws ssm get-parameter --name /job-syllabus/terraform/jenkins_allowed_cidr --region "$AWS_REGION" --query Parameter.Value --output text)" \
-                        --arg api_allowed_cidr "$(aws ssm get-parameter --name /job-syllabus/terraform/api_allowed_cidr --region "$AWS_REGION" --query Parameter.Value --output text)" \
                         --arg alert_email "$(aws ssm get-parameter --name /job-syllabus/terraform/alert_email --region "$AWS_REGION" --query Parameter.Value --output text)" \
                         --argjson restore_from_snapshot "$(aws ssm get-parameter --name /job-syllabus/terraform/restore_from_snapshot --region "$AWS_REGION" --query Parameter.Value --output text)" \
-                        '{jenkins_allowed_cidr:$jenkins_allowed_cidr, api_allowed_cidr:$api_allowed_cidr, alert_email:$alert_email, restore_from_snapshot:$restore_from_snapshot}' \
+                        '{jenkins_allowed_cidr:$jenkins_allowed_cidr, alert_email:$alert_email, restore_from_snapshot:$restore_from_snapshot}' \
                         > terraform.tfvars.json
                     '''
                     sh 'terraform init'

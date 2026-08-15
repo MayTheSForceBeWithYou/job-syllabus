@@ -1,4 +1,3 @@
 jenkins_allowed_cidr = "203.0.113.5/32" # your public IP, /32
-api_allowed_cidr     = "203.0.113.5/32" # usually the same value as jenkins_allowed_cidr
 alert_email          = "you@example.com"
 restore_from_snapshot = false # true after the first apply

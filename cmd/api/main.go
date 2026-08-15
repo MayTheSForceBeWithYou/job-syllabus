@@ -60,7 +60,7 @@ func main() {
 	}
 	logger.Info("api: loaded config", "companies", len(companies), "skills", len(skills))
 
-	srv := api.New(s, skills, companies, os.Getenv("ALLOWED_CIDR"))
+	srv := api.New(s, skills, companies)
 	if err := srv.RefreshSkills(startupCtx); err != nil {
 		// Not fatal — proceed with the yaml-only dictionary and let the
 		// background refresh loop below retry; a transient DynamoDB error
