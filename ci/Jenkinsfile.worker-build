@@ -131,15 +131,23 @@ pipeline {
                 // on its own once it's sat idle for 5 minutes; no manual
                 // scale-down needed here.
                 sh '''
+                  # Captured before update-service, not after
+                  # services-stable returns — a real run confirmed a cold
+                  # Fargate start (image pull + container init) can take
+                  # several minutes on its own, and computing START_TIME
+                  # only once the wait finished missed the actual log
+                  # line entirely: it was written mid-wait, before the
+                  # search window even began.
+                  START_TIME=$(( $(date -u +%s) - 10 ))
+
                   aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
                     --desired-count 1 --region "$AWS_REGION" >/dev/null
                   aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --region "$AWS_REGION"
 
-                  START_TIME=$(( $(date -u +%s) - 60 ))
                   for i in $(seq 1 12); do
                     FOUND=$(aws logs filter-log-events --log-group-name "$LOG_GROUP" --region "$AWS_REGION" \
                       --log-stream-name-prefix "worker/worker" --start-time "${START_TIME}000" \
-                      --filter-pattern "\\"worker: starting\\"" --query 'events[0].message' --output text)
+                      --filter-pattern '"worker: starting"' --query 'events[0].message' --output text)
                     if [ "$FOUND" != "None" ] && [ -n "$FOUND" ]; then
                       echo "Confirmed: $FOUND"
                       exit 0
