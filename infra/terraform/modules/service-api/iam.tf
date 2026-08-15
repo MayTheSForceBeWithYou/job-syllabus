@@ -17,17 +17,27 @@ resource "aws_iam_role" "task" {
   assume_role_policy = data.aws_iam_policy_document.task_assume.json
 }
 
-# Phase 3 is read-only (docs/design.md §7/§13) — no PutItem/UpdateItem
-# here. Widen this when a write endpoint (submit/reviews) lands.
+# Phase 3 was read-only (docs/design.md §7/§13: "no PutItem/UpdateItem
+# here. Widen this when a write endpoint (submit/reviews) lands.") — Phase
+# 5's review-queue triage (POST /v1/reviews/{term}) is that write endpoint:
+# PutItem for PutSkill (create/alias), DeleteItem for ResolvePendingReview.
+# A real 500 in production caught this the first time create/alias were
+# exercised against the real deployment — AccessDeniedException on
+# PutItem, this policy hadn't been widened yet. Resource/attachment names
+# kept as `task_dynamodb_read` rather than renamed to avoid an unforced
+# IAM policy replace; the name is now a misnomer, not a description of
+# current scope.
 data "aws_iam_policy_document" "task_dynamodb_read" {
   statement {
-    sid = "ReadJobSyllabusTable"
+    sid = "ReadWriteJobSyllabusTable"
     actions = [
       "dynamodb:GetItem",
       "dynamodb:Query",
       "dynamodb:Scan",
       "dynamodb:BatchGetItem",
       "dynamodb:DescribeTable",
+      "dynamodb:PutItem",
+      "dynamodb:DeleteItem",
     ]
     resources = [
       var.table_arn,
