@@ -10,15 +10,18 @@ untracked `job-syllabus-design.md` as a competing source of truth; that's
 resolved (see `docs/design-full-reference.md`'s header) and `docs/design.md`
 is the only source of truth.
 
-**Phase 0, Phase 1, Phase 2, and Phase 3 are all complete** — see
+**Phase 0 through Phase 4 are all complete** — see
 [docs/phase-0.md](docs/phase-0.md), [docs/phase-1.md](docs/phase-1.md),
-[docs/phase-2.md](docs/phase-2.md), and [docs/phase-3.md](docs/phase-3.md)
-for the full writeups (§0.6 requires these; they're the more detailed
-companion to this file). Phase 2's application-level content (what's
-built/tested in Go) is unchanged from Phase 1 below; what's new is real
-AWS infrastructure — see "Phase 2: infrastructure" further down. Phase 3
-adds the read-only `service-api` — see "Phase 3: the read API" further
-down still.
+[docs/phase-2.md](docs/phase-2.md), [docs/phase-3.md](docs/phase-3.md),
+and [docs/phase-4.md](docs/phase-4.md) for the full writeups (§0.6
+requires these; they're the more detailed companion to this file). Phase
+2's application-level content (what's built/tested in Go) is unchanged
+from Phase 1 below; what's new is real AWS infrastructure — see "Phase 2:
+infrastructure" further down. Phase 3 adds the read-only `service-api` —
+see "Phase 3: the read API" further down still. Phase 4 adds the other
+five Tier-1 connectors, grows the company registry to 49, and replaces
+inline extraction with a real SQS-queued `cmd/worker` — see "Phase 4:
+ingestion at scale" at the very end.
 
 ## DoD: met
 
@@ -204,6 +207,46 @@ root causes in `docs/phase-3.md`. The real AWS DynamoDB table had never
 been populated (`cmd/ingest` only supports DynamoDB Local); it now holds
 the same 71-posting/5-company dataset as local dev, synced via `cmd/rollup
 export`/`import`.
+
+## Phase 4: ingestion at scale
+
+All six Tier-1 ATS connectors now exist (Ashby, SmartRecruiters, Workable,
+Workday joined Greenhouse/Lever), the company registry grew from 5 to 49
+real, individually-verified companies, and extraction moved off the
+ingest path entirely: `cmd/ingest` uploads each posting's raw content to
+S3 and enqueues a reference on a real SQS queue; `cmd/worker` (previously
+a panic stub) long-polls it, extracts, and writes skill edges with
+idempotent write-time counters (`TransactWriteItems`, docs/design.md
+§4's "aggregation problem"). `cmd/rollup reconcile` recounts from the
+real edges and corrects drift. Both `cmd/ingest` (daily 06:00 UTC) and
+`cmd/rollup reconcile` (daily 07:00 UTC) run on EventBridge Scheduler;
+`cmd/worker` runs on Fargate Spot, scaling 0-4 on SQS queue depth.
+
+**Phase 4 DoD: mostly met.** 49 companies (well past "40+"), daily runs
+green, both DLQs empty, and `reconcile` confirmed live in production —
+it found and corrected four counters that had genuinely drifted during
+testing. The one line item not met: **500+ postings** (real number: 158)
+— explained honestly in `docs/phase-4.md` as a real-world hiring-volume
+finding (roughly 3-4 role-matched postings per company at this scale, not
+the ~12/company the target implicitly assumed), not a bug.
+
+```
+$ curl https://o79zaeqqna.execute-api.us-west-1.amazonaws.com/prod/v1/stats/overview
+{"postingCount":158,"companyCount":20,"skillEdgeCount":370,
+ "distinctSkillsMatched":55,"coveragePct":54.4}
+```
+
+Getting there surfaced ten real bugs — a Workday server-side page-size
+cap, two Greenhouse tokens that resolved to the wrong company despite a
+real HTTP 200, a Lever EU-region API host, a Jenkins CI role that can tag
+IAM roles but not managed policies, five real HIGH-severity CVEs Trivy
+caught on the worker image's first scan, a smoke-test timing bug that
+made a genuinely successful deploy look failed, a missing `ingest-build`/
+`rollup-build` pipeline that only surfaced when the real scheduled task
+tried to pull an image nothing had ever pushed, and a missing
+`dynamodb:UpdateItem` grant that broke every real skill-edge write until
+caught via CloudWatch Logs — all documented with root causes in
+`docs/phase-4.md`.
 
 ## Postmortems worth keeping
 

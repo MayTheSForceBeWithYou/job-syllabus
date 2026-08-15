@@ -1,33 +1,55 @@
 # Next steps
 
-**Phase 0, Phase 1, Phase 2, and Phase 3 are all complete.** Phase 0/1 DoD
-met (`docs/design.md` §17): `make ingest && make report` prints a ranked
-skill-frequency table from real postings across 5 companies — see
-PROGRESS.md for the actual output. The §6 validation gate also passes
-(precision 1.000, recall 0.942, 70 hand-labeled postings). Phase 2 DoD met:
-real Terraform-managed AWS infrastructure plus a fully config-as-code
-Jenkins, validated by terminating the Jenkins instance and confirming
-`terraform apply` alone brings it back fully working — see
-[docs/phase-2.md](docs/phase-2.md). Phase 3 DoD met: `service-api` is
-deployed on ECS Fargate behind API Gateway, serving real ranked-skill data,
-built and deployed by Jenkins from a git push — see
-[docs/phase-3.md](docs/phase-3.md). `docs/phase-0.md` through
-`docs/phase-3.md` writeups are all done (§0.6).
+**Phase 0 through Phase 4 are all complete.** Phase 0/1 DoD met
+(`docs/design.md` §17): `make ingest && make report` prints a ranked
+skill-frequency table from real postings — see PROGRESS.md for the actual
+output. The §6 validation gate also passes (precision 1.000, recall
+0.942, 70 hand-labeled postings). Phase 2 DoD met: real Terraform-managed
+AWS infrastructure plus a fully config-as-code Jenkins, validated by
+terminating the Jenkins instance and confirming `terraform apply` alone
+brings it back fully working — see [docs/phase-2.md](docs/phase-2.md).
+Phase 3 DoD met: `service-api` is deployed on ECS Fargate behind API
+Gateway, serving real ranked-skill data, built and deployed by Jenkins
+from a git push — see [docs/phase-3.md](docs/phase-3.md). Phase 4 DoD
+mostly met: all six Tier-1 connectors, a 49-company registry, a real
+SQS-queued `cmd/worker`, idempotent counters, and daily EventBridge
+scheduling are all live in production; the one line item short is 500+
+postings (real number 158) — an honest, explained real-world-volume
+finding, not a bug — see [docs/phase-4.md](docs/phase-4.md).
+`docs/phase-0.md` through `docs/phase-4.md` writeups are all done (§0.6).
 
-## Phase 4 and beyond (not started)
+## Phase 5 and beyond (not started)
 
-Per `docs/design.md`'s phase list: `service-worker` (scheduled/queued
-ingestion — the SQS queues from Phase 2 exist but nothing consumes them
-yet; `cmd/ingest` still only runs by hand against DynamoDB Local, and the
-real AWS table is synced manually via `cmd/rollup export`/`import`), auth
-(Phase 6's Cognito JWT authorizer — `service-api` is locked to the
-operator's IP by an application-layer allowlist in the meantime, see
-`internal/api/ipallow.go`), Stage 4 (Bedrock fallback) and Stage 5 (review
-queue) of extraction, role-family classification, and the Expo/mobile
-client. `ci/jobs.groovy` also defers client-build, backfill, and
-re-extract jobs to their own later phases, and `infra-plan`'s trigger is
-push-based rather than true PR-discovery pending GitHub credentials in
-Jenkins.
+Per `docs/design.md`'s phase list: Stage 4 (Bedrock fallback) and Stage 5
+(review queue) of extraction, auth (Phase 6's Cognito JWT authorizer —
+`service-api` is locked to the operator's IP by an application-layer
+allowlist in the meantime, see `internal/api/ipallow.go`), role-family
+classification (every posting is still `RoleFamily: unclassified`, so
+`STAT#` counters currently only ever have one bucket), and the Expo/mobile
+client. `ci/jobs.groovy` also still defers a `reextract` job (needs
+`ExtractVer`-driven re-enqueueing across the whole corpus, not yet built),
+and `infra-plan`'s trigger is push-based rather than true PR-discovery
+pending GitHub credentials in Jenkins.
+
+## Growing the company registry toward 500+ postings
+
+Phase 4's honest finding (see `docs/phase-4.md`): real-world role-matched
+volume runs closer to 3-4 postings per company than the ~12/company the
+"500+" target implicitly assumed, even across a diversified,
+individually-verified 49-company registry. Two real, non-mutually-
+exclusive paths forward, neither of which involves loosening
+`roleFilters` until off-thesis roles start counting:
+- **Add more companies.** `data/companies.yaml`'s header documents the
+  verification discipline that matters here — HTTP 200 alone isn't
+  enough; always cross-check the response's own `company_name`/job-title
+  fields against the intended company (two tokens looked right and
+  weren't, see `docs/phase-4.md` bug #2). Budget real time for this, not
+  a quick pass — the useful hit rate drops fast past the ~50 most
+  obvious candidates.
+- **Let the daily schedule accumulate.** This is what EventBridge's daily
+  06:00 UTC `cmd/ingest` run is actually for — the corpus grows over
+  weeks as different roles open/close across the registry, not just from
+  a single ingest run's snapshot.
 
 ## What's below is carried over from Phase 1, still accurate
 

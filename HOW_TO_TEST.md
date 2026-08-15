@@ -4,11 +4,14 @@ This covers what actually works today. It'll grow as more of
 `docs/design.md` gets implemented — check the date below against
 `git log` if it's been a while.
 
-**Last updated:** 2026-08-14 — Phase 0/1/2/3 complete, DoD and §6
-validation gate both passing, real AWS infrastructure + Jenkins +
-`service-api` live. Sections 1-5 below (local pipeline) are unchanged from
-Phase 1; section 6 covers Phase 2's infrastructure; section 7 (new) covers
-Phase 3's deployed API.
+**Last updated:** 2026-08-15 — Phase 0-4 complete, DoD and §6 validation
+gate both passing, real AWS infrastructure + Jenkins + `service-api` +
+queue-based ingestion all live. Sections 1-5 below (local pipeline) are
+mostly unchanged from Phase 1, but note section 3's update — `cmd/ingest`
+no longer extracts inline (Phase 4), so seeing real skill data locally
+now needs `make worker` running too. Section 6 covers Phase 2's
+infrastructure, section 7 Phase 3's deployed API, section 8 (new) Phase
+4's real ingestion pipeline.
 
 ## Prerequisites
 
@@ -39,55 +42,82 @@ build fails; see PROGRESS.md for the current number). Everything else has
 no unit tests yet — `internal/connectors`, `internal/store`, etc. are only
 exercised by the live run below.
 
-## 2. Bring up DynamoDB Local
+## 2. Bring up DynamoDB Local + LocalStack
 
 ```
-make up      # docker compose up -d
+make up      # docker compose up -d, then provisions the local SQS queue + S3 bucket
 ```
 
 Runs DynamoDB Local in `-inMemory` mode — **data does not persist** across
 `docker compose down` or a container restart. That's intentional for local
 dev (see PROGRESS.md's hang postmortem for why); `make ingest` repopulates
-it every time. If `make up` hangs, Docker Desktop itself probably isn't
-ready yet — `docker info` should return instantly when it is.
+it every time. As of Phase 4, `make up` also starts LocalStack (SQS + S3,
+pinned to `3.0.2` — newer tags require a paid auth token even for these
+free-tier services) and creates the `extract-queue` + `job-syllabus-raw-local`
+bucket `cmd/ingest`/`cmd/worker` need. If `make up` hangs, Docker Desktop
+itself probably isn't ready yet — `docker info` should return instantly
+when it is.
 
 ## 3. Run the ingest CLI against real companies
 
 ```
-make ingest   # go run ./cmd/ingest ingest (runs `make up` first)
+make ingest   # fetches/dedupes/upserts postings, enqueues each for extraction
+make worker   # in a second terminal: drains the queue, runs extraction, Ctrl-C when idle
 ```
 
-This hits the real Greenhouse and Lever public APIs for the 5 companies in
-`data/companies.yaml` (Epic Games, Riot Games, Discord, Roblox, Kabam) —
-no mocking, no fixtures. Expect structured log output like:
+This hits the real Greenhouse/Lever/Ashby/SmartRecruiters/Workable/Workday
+APIs for all 49 companies in `data/companies.yaml` — no mocking, no
+fixtures. **As of Phase 4, `cmd/ingest` no longer extracts inline** — it
+only fetches, dedupes, upserts postings, and enqueues them; `cmd/worker`
+is what actually runs Stages 1-3 and writes skill edges. Run both to see
+real skill data locally. Expect structured log output like:
 
 ```
-time=... level=INFO msg="company starting" index=1 of=5 company=epic-games ats=greenhouse
+time=... level=INFO msg="company starting" index=1 of=49 company=epic-games ats=greenhouse
 time=... level=INFO msg="greenhouse: fetching" company=epic-games url="https://boards-api.greenhouse.io/..."
 time=... level=INFO msg="greenhouse: fetch complete" company=epic-games jobs=161 elapsed=223ms
-time=... level=INFO msg="company complete" company=epic-games fetched=161 roleMatched=9 new=9 updated=0 skillEdges=37
+time=... level=INFO msg="company complete" company=epic-games fetched=161 roleMatched=9 new=9 updated=0 closed=0 enqueued=9
 ...
-time=... level=INFO msg="ingest run complete" companies=5 skipped=0 fetched=617 roleMatched=70 new=70 updated=0 skillEdges=169
+time=... level=INFO msg="ingest run complete" companies=49 skipped=0 fetched=1735 roleMatched=162 new=0 updated=162 closed=0 enqueued=162
 ```
 
-A rerun should show `new=0` and `updated=` some number, since postings get
-upserted, not duplicated. A company timing out or failing shows up as an
-`ERROR` line with elapsed time and the underlying error — it gets skipped,
-not fatal to the whole run. **Watch `skillEdges` per company** — a company
-stuck at 0 while others aren't is the signal that its postings use section
-headings (or an HTML structure) the extraction pipeline isn't recognizing.
-This is exactly how the Epic Games and Roblox heading bugs were found; see
-PROGRESS.md. `kabam` legitimately stays at 0 — that's an accepted,
-documented gap (NEXT_STEPS.md), not a bug.
+then, from `make worker`:
 
-**Env var overrides** (all optional):
+```
+time=... level=INFO msg="worker: starting" skills=89 queue=http://sqs.us-west-1.localhost.localstack.cloud:4566/...
+time=... level=INFO msg="worker: extracted" postingId=... skills=4
+...
+```
+
+A rerun of `make ingest` should show `new=0` and `updated=` some number,
+since postings get upserted, not duplicated — and re-running `make worker`
+against the same postings should leave every skill count and edge count
+unchanged (`internal/store.PutSkillEdge`'s idempotent `TransactWriteItems`,
+docs/design.md §4). A company timing out or failing shows up as an
+`ERROR` line with elapsed time and the underlying error — it gets skipped,
+not fatal to the whole run. **Watch `skillEdges` per company in the
+worker's logs** — a company stuck at 0 while others aren't is the signal
+that its postings use section headings (or an HTML structure) the
+extraction pipeline isn't recognizing. This is exactly how the Epic Games
+and Roblox heading bugs were found; see PROGRESS.md. `kabam` legitimately
+stays at 0 — that's an accepted, documented gap (NEXT_STEPS.md), not a
+bug. Many of the other 44 companies also legitimately show 0 this run —
+see docs/phase-4.md's honest accounting of real-world role-matched
+volume, also not a bug.
+
+**Env var overrides** (all optional unless noted):
 | Var | Default | Purpose |
 |---|---|---|
-| `DYNAMODB_ENDPOINT` | `http://localhost:8000` | Where to find DynamoDB Local |
+| `DYNAMODB_ENDPOINT` | (real AWS) | Where to find DynamoDB — `make ingest`/`make worker` set this to DynamoDB Local |
+| `S3_ENDPOINT` | (real AWS) | Where to find S3 — set to LocalStack by `make ingest`/`make worker` |
+| `SQS_ENDPOINT` | (real AWS) | Where to find SQS — set to LocalStack by `make ingest`/`make worker` |
+| `RAW_BUCKET` | **required** for `ingest` | S3 bucket for raw posting content |
+| `EXTRACT_QUEUE_URL` | **required** for `ingest`/`worker` | The extract-queue URL |
 | `COMPANIES_FILE` | `data/companies.yaml` | Company registry to ingest |
 | `SKILLS_FILE` | `data/skills.yaml` | Skill dictionary for extraction and report |
 | `INGEST_TIMEOUT` | `900` (15m, in seconds) | Overall run deadline |
 | `COMPANY_TIMEOUT` | `20` (seconds) | Per-company fetch deadline before skip |
+| `INGEST_ONLY_COMPANY` | (unset = all) | Scope a run to one company's `slug` (backs the Jenkins `backfill` job) |
 
 ## 4. Run the report
 
@@ -221,3 +251,93 @@ CloudWatch, not just the response body:
 aws logs filter-log-events --log-group-name /ecs/job-syllabus --region us-west-1 \
   --filter-pattern "\"ip allowlist rejected\"" --query 'events[].message' --output text
 ```
+
+## 8. Testing the real ingestion pipeline (Phase 4)
+
+This needs the same AWS CLI credentials as section 6/7. Unlike `service-api`,
+none of `cmd/ingest`/`cmd/worker`/`cmd/rollup` sit behind API Gateway —
+they're either a long-running Fargate Spot service (`worker`) or one-shot
+tasks invoked by EventBridge Scheduler (`ingest`, `rollup reconcile`).
+
+**Get the queue URL** (needed for several commands below):
+
+```
+QUEUE_URL=$(aws sqs get-queue-url --queue-name job-syllabus-extract-queue --region us-west-1 --query QueueUrl --output text)
+DLQ_URL=$(aws sqs get-queue-url --queue-name job-syllabus-extract-dlq --region us-west-1 --query QueueUrl --output text)
+```
+
+**Check DLQ depth** — should always be 0 at rest. A non-zero count means
+`worker` is failing repeatedly on some message (SQS `redrive_policy` sends
+it there after 3 failed receives) and is exactly what the
+`job-syllabus-extract-dlq-depth` CloudWatch alarm (`modules/observability`)
+pages on:
+
+```
+aws sqs get-queue-attributes --queue-url $DLQ_URL --attribute-names ApproximateNumberOfMessages \
+  --region us-west-1 --query 'Attributes.ApproximateNumberOfMessages' --output text
+```
+
+**Watch the worker autoscale with queue depth**: `modules/service-worker`
+runs at `min_capacity=0` — no messages, no running tasks, no cost. Enqueue
+work (see the manual ingest trigger below) and watch the service scale out,
+then back to zero once the queue drains (StepScaling on
+`ApproximateNumberOfMessagesVisible`, not the target-tracking CPU policy
+`service-api` uses):
+
+```
+watch -n 10 'aws ecs describe-services --cluster job-syllabus --services worker --region us-west-1 \
+  --query "services[0].[desiredCount,runningCount]" --output text; \
+  aws sqs get-queue-attributes --queue-url '"$QUEUE_URL"' --attribute-names ApproximateNumberOfMessagesVisible \
+  --region us-west-1 --query Attributes.ApproximateNumberOfMessagesVisible --output text'
+```
+
+(No `watch` on Windows — just re-run both commands every ~10s by hand, or
+use `powershell -Command "while($true){...; Start-Sleep 10}"`.)
+
+**Manually trigger the real ingest or reconcile task**, rather than waiting
+for the daily 06:00/07:00 UTC EventBridge schedule — get the exact network
+config the schedule itself uses so you don't have to guess subnets/security
+groups:
+
+```
+aws scheduler get-schedule --name job-syllabus-ingest --region us-west-1
+# copy the taskDefinition ARN + networkConfiguration out of the target, then:
+aws ecs run-task --cluster job-syllabus --task-definition job-syllabus-ingest \
+  --launch-type FARGATE --network-configuration '<paste networkConfiguration here>' --region us-west-1
+```
+
+Same pattern with schedule name `job-syllabus-rollup-reconcile` / task
+definition family `job-syllabus-rollup-reconcile` for the reconcile task.
+Follow the run with:
+
+```
+aws ecs wait tasks-stopped --cluster job-syllabus --tasks <task-arn-from-run-task> --region us-west-1
+aws logs filter-log-events --log-group-name /ecs/job-syllabus --region us-west-1 \
+  --start-time <ms-epoch-before-run-task> --filter-pattern "ingest run complete" --query 'events[].message' --output text
+```
+
+`aws ecs wait tasks-stopped` on a one-shot task is a real "did it actually
+finish" signal in a way `run-task`'s own exit code isn't — it only confirms
+the task was *submitted*, not that it *succeeded* (see phase-4.md bug #9,
+found this exact way).
+
+**Backfill a single company** without a full 49-company run — the
+`backfill` Jenkins job wraps `INGEST_ONLY_COMPANY`, parameterized by
+`COMPANY_SLUG` (must match a `slug` in `data/companies.yaml`). Trigger it
+from the Jenkins UI ("Build with Parameters"), or run the equivalent
+one-off task locally against real AWS:
+
+```
+DYNAMODB_ENDPOINT= S3_ENDPOINT= SQS_ENDPOINT= AWS_REGION=us-west-1 \
+  RAW_BUCKET=<real bucket> EXTRACT_QUEUE_URL=$QUEUE_URL INGEST_ONLY_COMPANY=epic-games \
+  go run ./cmd/ingest ingest
+```
+
+**CI jobs added this phase**: `worker-build`, `ingest-build`,
+`rollup-build` (Kaniko build + Trivy scan + ECR push, same pattern as
+`api-build`; `ingest-build`/`rollup-build` skip the ECS-service-deploy step
+since those run as one-shot scheduled tasks, not long-lived services) and
+`backfill` (parameterized, no build — just invokes `run-task` against the
+already-built `ingest` image with `INGEST_ONLY_COMPANY` set). All four are
+seeded by `ci/jobs.groovy`, visible in the same Jenkins instance as
+section 6.
