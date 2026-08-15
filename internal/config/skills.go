@@ -45,3 +45,33 @@ func LoadSkills(path string) ([]model.Skill, error) {
 	}
 	return skills, nil
 }
+
+// ValidSkillID reports whether id matches the same slug format LoadSkills
+// enforces on data/skills.yaml — exported so the review-approval API path
+// (internal/api) can validate an operator-chosen skill ID before writing it
+// to DynamoDB.
+func ValidSkillID(id string) bool {
+	return validSkillID.MatchString(id)
+}
+
+// MergeSkills combines the git-tracked yaml seed with DynamoDB-approved
+// skills (Phase 5's review-queue writeback — docs/design.md §6 Stage 5,
+// operator decision in docs/phase-5.md: DynamoDB is the live source of
+// truth rather than an automated git commit, since no GitHub write
+// credential exists in this project). dynamicSkills wins on ID collision —
+// it represents the operator's most recent approval/edit, while the yaml
+// seed only refreshes on the next deploy.
+func MergeSkills(yamlSkills, dynamicSkills []model.Skill) []model.Skill {
+	byID := make(map[string]model.Skill, len(yamlSkills)+len(dynamicSkills))
+	for _, s := range yamlSkills {
+		byID[s.ID] = s
+	}
+	for _, s := range dynamicSkills {
+		byID[s.ID] = s
+	}
+	merged := make([]model.Skill, 0, len(byID))
+	for _, s := range byID {
+		merged = append(merged, s)
+	}
+	return merged
+}

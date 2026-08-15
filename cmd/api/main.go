@@ -61,6 +61,13 @@ func main() {
 	logger.Info("api: loaded config", "companies", len(companies), "skills", len(skills))
 
 	srv := api.New(s, skills, companies, os.Getenv("ALLOWED_CIDR"))
+	if err := srv.RefreshSkills(startupCtx); err != nil {
+		// Not fatal — proceed with the yaml-only dictionary and let the
+		// background refresh loop below retry; a transient DynamoDB error
+		// at startup shouldn't block the whole API from serving.
+		logger.Error("api: initial skill refresh failed, starting with yaml-only dictionary", "error", err.Error())
+	}
+	go runSkillRefreshLoop(context.Background(), srv, logger)
 
 	addr := ":" + envOr("PORT", "8080")
 	httpSrv := &http.Server{
@@ -103,4 +110,29 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// skillRefreshInterval matches cmd/worker's own reload cadence — an
+// operator approving a review-queue term should see /v1/skills reflect it
+// within about the same window regardless of which service they check
+// first.
+const skillRefreshInterval = 5 * time.Minute
+
+// runSkillRefreshLoop periodically re-merges data/skills.yaml with
+// DynamoDB-approved skills (Phase 5's review-queue writeback, docs/
+// design.md §6 Stage 5) so an approval takes effect without redeploying
+// service-api. Runs until the process exits — there's no graceful-shutdown
+// signal to wire this to since it does no I/O worth draining, unlike the
+// HTTP server's own shutdown handling above.
+func runSkillRefreshLoop(ctx context.Context, srv *api.Server, logger *slog.Logger) {
+	ticker := time.NewTicker(skillRefreshInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		refreshCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		err := srv.RefreshSkills(refreshCtx)
+		cancel()
+		if err != nil {
+			logger.Error("api: periodic skill refresh failed", "error", err.Error())
+		}
+	}
 }

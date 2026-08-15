@@ -82,7 +82,7 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 		kept = append(kept, e)
 	}
 
-	rows := rank.Skills(kept, s.skillsByID)
+	rows := rank.Skills(kept, s.skillsMap())
 
 	limit := parseIntParam(q.Get("limit"), 100, 500)
 	if len(rows) > limit {
@@ -113,7 +113,7 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 // — see skillDetailDTO's comment.
 func (s *Server) handleGetSkill(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	sk, ok := s.skillsByID[id]
+	sk, ok := s.skillByID(id)
 	if !ok {
 		writeProblem(w, r, http.StatusNotFound, "skill not found", "no skill with id "+id+" in the dictionary")
 		return
@@ -155,7 +155,7 @@ func (s *Server) handleGetSkill(w http.ResponseWriter, r *http.Request) {
 // stops being true (docs/design.md Phase 4).
 func (s *Server) handleGetSkillPostings(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if _, ok := s.skillsByID[id]; !ok {
+	if _, ok := s.skillByID(id); !ok {
 		writeProblem(w, r, http.StatusNotFound, "skill not found", "no skill with id "+id+" in the dictionary")
 		return
 	}

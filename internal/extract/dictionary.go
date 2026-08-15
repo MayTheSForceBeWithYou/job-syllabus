@@ -10,9 +10,16 @@ import (
 // Version is stamped onto Posting.ExtractVer. Bump it whenever skills.yaml
 // or the matching/segmentation logic changes materially, so
 // re-extraction can be targeted at postings with ExtractVer < Version
-// (docs/design.md §6 "Re-extraction") — not wired up yet since there's no
-// re-extraction job in Phase 1, but the field is meaningful from the start.
-const Version = 1
+// (docs/design.md §6 "Re-extraction") — cmd/rollup's `reextract` subcommand
+// is what actually re-enqueues them, added in Phase 5 alongside the bump
+// below.
+//
+// 2 (Phase 5): added Stage 4 (Bedrock fallback for zero-dictionary-hit
+// bullets) and Stage 5 (review queue) — every posting extracted under
+// Version 1 only ever saw dictionary matches, so re-extracting under
+// Version 2 can surface additional skills without any dictionary or
+// segmentation change at all.
+const Version = 2
 
 const maxEvidenceLen = 200
 
@@ -57,6 +64,15 @@ func CompileSkills(skills []model.Skill) ([]CompiledSkill, error) {
 		compiled = append(compiled, CompiledSkill{Skill: s, patterns: patterns})
 	}
 	return compiled, nil
+}
+
+// FindEvidence exposes findEvidence for Stage 4's "does this
+// Bedrock-discovered term already match a known skill" check (cmd/worker):
+// the same regex matchers Stage 3 itself uses, so a paraphrase Bedrock
+// resolves to text the dictionary would also have caught is treated
+// identically regardless of which stage found it.
+func (c CompiledSkill) FindEvidence(text string) (string, bool) {
+	return c.findEvidence(text)
 }
 
 func (c CompiledSkill) findEvidence(line string) (string, bool) {

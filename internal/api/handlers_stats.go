@@ -67,7 +67,7 @@ func (s *Server) handleStatsOverview(w http.ResponseWriter, r *http.Request) {
 		PostingCount:          len(postings),
 		CompanyCount:          rank.CountCompanies(postings),
 		SkillEdgeCount:        len(edges),
-		DistinctSkillsMatched: len(rank.Skills(edges, s.skillsByID)),
+		DistinctSkillsMatched: len(rank.Skills(edges, s.skillsMap())),
 		CoveragePct:           round1(coverage),
 	}
 	if !lastSeen.IsZero() {

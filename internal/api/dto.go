@@ -130,3 +130,37 @@ func parseIntParam(raw string, def, max int) int {
 func round1(f float64) float64 {
 	return math.Round(f*10) / 10
 }
+
+// reviewDTO is one pending unknown term (docs/design.md §7 GET /v1/reviews:
+// "Pending unknown terms, sorted by frequency").
+type reviewDTO struct {
+	Term        string   `json:"term"`
+	Category    string   `json:"category"`
+	Occurrences int      `json:"occurrences"`
+	Evidence    []string `json:"evidence"`
+}
+
+type listReviewsResponse struct {
+	Reviews []reviewDTO `json:"reviews"`
+}
+
+// reviewActionRequest is POST /v1/reviews/{term}'s body (docs/design.md §7:
+// "{action: create|alias|reject, ...}"). Fields are action-specific:
+//   - create: display, category, aliases (skillId defaults to a slug of the
+//     term if omitted)
+//   - alias: mergeIntoSkillId
+//   - reject: no extra fields
+type reviewActionRequest struct {
+	Action           string   `json:"action"`
+	SkillID          string   `json:"skillId,omitempty"`
+	Display          string   `json:"display,omitempty"`
+	Category         string   `json:"category,omitempty"`
+	Aliases          []string `json:"aliases,omitempty"`
+	MergeIntoSkillID string   `json:"mergeIntoSkillId,omitempty"`
+}
+
+type reviewActionResponse struct {
+	Term   string    `json:"term"`
+	Action string    `json:"action"`
+	Skill  *skillDTO `json:"skill,omitempty"`
+}

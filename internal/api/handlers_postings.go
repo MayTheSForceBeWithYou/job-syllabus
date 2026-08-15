@@ -73,7 +73,7 @@ func (s *Server) handleGetPosting(w http.ResponseWriter, r *http.Request) {
 	skills := make([]postingSkillDTO, 0, len(edges))
 	for _, e := range edges {
 		display := e.SkillID
-		if sk, ok := s.skillsByID[e.SkillID]; ok && sk.Display != "" {
+		if sk, ok := s.skillByID(e.SkillID); ok && sk.Display != "" {
 			display = sk.Display
 		}
 		skills = append(skills, postingSkillDTO{
