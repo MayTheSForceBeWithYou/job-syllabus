@@ -19,7 +19,7 @@ pipeline {
         // Same rationale as api-build's trigger — GitHub's webhook
         // servers can't reach this Jenkins (ALB IP-locked to the
         // operator, §10).
-        scm('H/5 * * * *')
+        pollSCM('H/5 * * * *')
     }
 
     environment {
