@@ -1,0 +1,133 @@
+// docs/design.md §4/§5/§9: push to main
+//   go vet -> golangci-lint -> go test -race -cover -> build (multi-stage
+//   -> distroless) -> Trivy (fail on HIGH+) -> ECR push tagged $GIT_SHA
+//   -> register new task definition revision -> smoke test (run
+//   `reconcile`, confirm it exits 0)
+//
+// Same shape as ci/Jenkinsfile.ingest-build — see that file's header
+// comment for why there's no ECS service/update-service step (this backs
+// a scheduled one-shot RunTask, modules/task-scheduled, whose EventBridge
+// target points at the task definition family rather than a pinned
+// revision). No extraction-validation-gate stage: cmd/rollup doesn't
+// touch internal/extract at all.
+pipeline {
+    agent { label 'fargate-agent' }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+    }
+
+    triggers {
+        pollSCM('H/5 * * * *')
+    }
+
+    environment {
+        AWS_REGION      = 'us-west-1'
+        ECR_REPO        = '881811711506.dkr.ecr.us-west-1.amazonaws.com/job-syllabus/rollup'
+        IMAGE_TAG       = "${env.GIT_COMMIT}"
+        ECS_CLUSTER     = 'job-syllabus'
+        TASK_DEF_FAMILY = 'job-syllabus-rollup-reconcile'
+    }
+
+    stages {
+        stage('Vet') {
+            steps { sh 'go vet ./...' }
+        }
+        stage('Lint') {
+            steps { sh 'golangci-lint run ./...' }
+        }
+        stage('Test') {
+            steps { sh 'go test -race -cover ./...' }
+        }
+        stage('Build image') {
+            agent { label 'kaniko-agent' }
+            steps {
+                checkout scm
+                script {
+                    def status = sh(returnStatus: true, script: '''
+                      mkdir -p /kaniko/.docker
+                      ECR_HOST="${ECR_REPO%%/*}"
+                      AUTH=$(printf "AWS:%s" "$(aws ecr get-login-password --region "$AWS_REGION")" | base64 -w0)
+                      printf '{"auths":{"%s":{"auth":"%s"}}}' "$ECR_HOST" "$AUTH" > /kaniko/.docker/config.json
+                      /kaniko/executor --dockerfile=Dockerfile --context="dir://$(pwd)" \
+                        --destination="$ECR_REPO:$IMAGE_TAG" --build-arg=BINARY=rollup --cache=false \
+                        --single-snapshot --ignore-path=/home/jenkins
+                    ''')
+                    echo "Kaniko step exited ${status} — this can be a false failure if the JNLP wrapper died after a successful push; the next stage verifies against ECR directly."
+                }
+            }
+        }
+        stage('Verify image pushed') {
+            steps {
+                sh '''
+                  for i in $(seq 1 20); do
+                    if aws ecr describe-images --repository-name job-syllabus/rollup \
+                        --image-ids imageTag="$IMAGE_TAG" --region "$AWS_REGION" >/dev/null 2>&1; then
+                      echo "Found $ECR_REPO:$IMAGE_TAG in ECR"
+                      exit 0
+                    fi
+                    sleep 15
+                  done
+                  echo "Image $ECR_REPO:$IMAGE_TAG never appeared in ECR" >&2
+                  exit 1
+                '''
+            }
+        }
+        stage('Trivy scan') {
+            steps {
+                sh 'trivy image --severity HIGH,CRITICAL --exit-code 1 "$ECR_REPO:$IMAGE_TAG"'
+            }
+        }
+        stage('Register task definition') {
+            steps {
+                sh '''
+                  aws ecs describe-task-definition --task-definition "$TASK_DEF_FAMILY" --region "$AWS_REGION" \
+                    --query 'taskDefinition' > current-task-def.json
+
+                  jq --arg IMAGE "$ECR_REPO:$IMAGE_TAG" \
+                    '.containerDefinitions[0].image = $IMAGE
+                     | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                           .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
+                    current-task-def.json > new-task-def.json
+
+                  NEW_REVISION_ARN=$(aws ecs register-task-definition --region "$AWS_REGION" \
+                    --cli-input-json file://new-task-def.json \
+                    --query 'taskDefinition.taskDefinitionArn' --output text)
+
+                  echo "Registered $NEW_REVISION_ARN — the next scheduled or manual run-task picks this up automatically (EventBridge Scheduler targets the family, not a pinned revision)."
+                '''
+            }
+        }
+        stage('Smoke test') {
+            steps {
+                sh '''
+                  SCHEDULE_NET=$(aws scheduler get-schedule --name job-syllabus-rollup-reconcile --group-name default \
+                    --region "$AWS_REGION" --query 'Target.EcsParameters.NetworkConfiguration.awsvpcConfiguration' --output json)
+                  SUBNETS=$(echo "$SCHEDULE_NET" | jq -c '.Subnets')
+                  SGS=$(echo "$SCHEDULE_NET" | jq -c '.SecurityGroups')
+                  NETWORK_CONFIG=$(jq -n --argjson subnets "$SUBNETS" --argjson sgs "$SGS" \
+                    '{awsvpcConfiguration:{subnets:$subnets,securityGroups:$sgs,assignPublicIp:"ENABLED"}}')
+
+                  TASK_ARN=$(aws ecs run-task --cluster "$ECS_CLUSTER" --task-definition "$TASK_DEF_FAMILY" \
+                    --launch-type FARGATE --region "$AWS_REGION" \
+                    --network-configuration "$NETWORK_CONFIG" \
+                    --query 'tasks[0].taskArn' --output text)
+
+                  if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
+                    echo "run-task did not return a task ARN" >&2
+                    exit 1
+                  fi
+                  echo "Started $TASK_ARN"
+
+                  aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" --region "$AWS_REGION"
+
+                  EXIT_CODE=$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" --region "$AWS_REGION" \
+                    --query 'tasks[0].containers[0].exitCode' --output text)
+                  echo "Container exited $EXIT_CODE"
+                  [ "$EXIT_CODE" = "0" ]
+                '''
+            }
+        }
+    }
+}

@@ -101,7 +101,16 @@ resource "aws_scheduler_schedule" "this" {
     role_arn = aws_iam_role.scheduler.arn
 
     ecs_parameters {
-      task_definition_arn = aws_ecs_task_definition.this.arn
+      # Revision-less (family-only) ARN, not aws_ecs_task_definition.this.arn
+      # directly — same "Jenkins owns the live revision after the first
+      # bootstrap" rationale as modules/service-api/service-worker's
+      # ignore_changes, applied to Scheduler's target instead of an ECS
+      # service: a bare family ARN always resolves to the latest ACTIVE
+      # revision at invocation time, so a Jenkins-registered new revision
+      # (ci/Jenkinsfile.ingest-build / rollup-build) takes effect on the
+      # very next scheduled run without Terraform needing to touch this
+      # target at all.
+      task_definition_arn = replace(aws_ecs_task_definition.this.arn, "/:\\d+$/", "")
       launch_type         = "FARGATE"
 
       network_configuration {

@@ -2,11 +2,23 @@
 // `jobs:` block, so these jobs exist from the very first boot, before
 // anyone touches the UI.
 //
-// api-build, worker-build, infra-plan, infra-apply, and backfill are
-// defined here as of Phase 4 — the pipeline table in §10 also lists
-// client-build (needs the Expo app, Phase 6) and reextract (needs
-// ExtractVer-driven re-enqueueing, not yet built — see NEXT_STEPS.md).
-// Add those jobs here when their phases land, not before.
+// api-build, worker-build, ingest-build, rollup-build, infra-plan,
+// infra-apply, and backfill are defined here as of Phase 4 — the pipeline
+// table in §10 also lists client-build (needs the Expo app, Phase 6) and
+// reextract (needs ExtractVer-driven re-enqueueing, not yet built — see
+// NEXT_STEPS.md). Add those jobs here when their phases land, not before.
+//
+// ingest-build/rollup-build exist because modules/task-scheduled's
+// scheduled RunTask targets need a real, versioned image to pull — a real
+// run confirmed the gap directly: the first-ever `run-task` invocation of
+// job-syllabus-ingest failed outright with CannotPullContainerError,
+// since Terraform's bootstrap task definition only ever pointed at a
+// placeholder `:latest` tag nothing had pushed. Same build/Trivy/register
+// pattern as api-build/worker-build, minus any `ecs update-service` step
+// — these back one-shot scheduled tasks, not long-running services, so
+// registering a new task definition revision against the family (not a
+// pinned revision, see modules/task-scheduled's ecs_parameters) is the
+// entire "deploy."
 //
 // infra-plan is a simple push-triggered pipelineJob, not a full
 // multibranch/PR-discovery job — §10 describes it as "PR touching
@@ -73,6 +85,42 @@ pipelineJob('backfill') {
             }
             scriptPath('ci/Jenkinsfile.backfill')
         }
+    }
+}
+
+pipelineJob('ingest-build') {
+    description('docs/design.md §5/§9: go vet -> golangci-lint -> go test -race -cover -> extraction validation gate -> build -> Trivy -> ECR push ($GIT_SHA) -> register task definition revision -> smoke test (run-task, single company)')
+    definition {
+        cpsScm {
+            scm {
+                git {
+                    remote { url(repoUrl) }
+                    branch('*/main')
+                }
+            }
+            scriptPath('ci/Jenkinsfile.ingest-build')
+        }
+    }
+    triggers {
+        scm('H/5 * * * *')
+    }
+}
+
+pipelineJob('rollup-build') {
+    description('docs/design.md §4/§5/§9: go vet -> golangci-lint -> go test -race -cover -> build -> Trivy -> ECR push ($GIT_SHA) -> register task definition revision -> smoke test (run reconcile)')
+    definition {
+        cpsScm {
+            scm {
+                git {
+                    remote { url(repoUrl) }
+                    branch('*/main')
+                }
+            }
+            scriptPath('ci/Jenkinsfile.rollup-build')
+        }
+    }
+    triggers {
+        scm('H/5 * * * *')
     }
 }
 
